@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,9 +61,20 @@ func (m *RecipientManager) Resolve(ctx context.Context, state news.State) (news.
 			chatID := strconv.FormatInt(upd.Message.Chat.ID, 10)
 			name := deriveRecipientName(upd.Message)
 
+			// Обрабатываем команды
+			text := strings.TrimSpace(upd.Message.Text)
+			textLower := strings.ToLower(text)
+
+			// Команда /stop - отписка
+			if textLower == "/stop" || textLower == "/stop@" || strings.HasPrefix(textLower, "/stop ") {
+				// Удаляем пользователя из списка получателей
+				delete(recipients, chatID)
+				log.Printf("User %s (%s) unsubscribed via /stop command", chatID, name)
+				continue
+			}
+
+			// Команда /start или любое другое сообщение - подписка
 			// Добавляем пользователя в список получателей
-			// Приветствие не отправляем, так как бот работает только при запуске workflow
-			// и задержка ответа будет выглядеть странно
 			recipients[chatID] = news.RecipientBinding{
 				Name:      name,
 				ChatID:    chatID,
