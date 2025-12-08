@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -208,9 +209,27 @@ type rssItem struct {
 }
 
 func parseRSSFeed(data []byte) ([]rssItem, error) {
+	// Исправляем некорректные XML-сущности (например, & без ;)
+	data = fixXMLEntities(data)
+
 	var feed rssFeed
 	if err := xml.Unmarshal(data, &feed); err != nil {
 		return nil, err
 	}
 	return feed.Channel.Items, nil
+}
+
+// fixXMLEntities исправляет распространённые проблемы с XML-сущностями в RSS-лентах.
+// Некоторые сайты используют & вместо &amp; в тексте.
+// Заменяем & на &amp; только если это не валидная XML-сущность.
+func fixXMLEntities(data []byte) []byte {
+	// Регулярное выражение для поиска &, которые не являются частью валидной XML-сущности
+	// Валидные сущности: &amp; &lt; &gt; &quot; &apos; &#123; &#x1F; &name;
+	// Ищем &, за которым не следует валидная сущность
+	invalidEntityRegex := regexp.MustCompile(`&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);)`)
+
+	// Заменяем некорректные & на &amp;
+	result := invalidEntityRegex.ReplaceAll(data, []byte("&amp;"))
+
+	return result
 }
