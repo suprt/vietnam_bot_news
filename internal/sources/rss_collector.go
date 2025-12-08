@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
@@ -223,13 +224,28 @@ func parseRSSFeed(data []byte) ([]rssItem, error) {
 // Некоторые сайты используют & вместо &amp; в тексте.
 // Заменяем & на &amp; только если это не валидная XML-сущность.
 func fixXMLEntities(data []byte) []byte {
-	// Регулярное выражение для поиска &, которые не являются частью валидной XML-сущности
-	// Валидные сущности: &amp; &lt; &gt; &quot; &apos; &#123; &#x1F; &name;
-	// Ищем &, за которым не следует валидная сущность
-	invalidEntityRegex := regexp.MustCompile(`&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);)`)
+	// Go regexp не поддерживает lookahead, поэтому используем простой подход:
+	// 1. Заменяем все & на &amp;
+	// 2. Восстанавливаем валидные сущности обратно
 
-	// Заменяем некорректные & на &amp;
-	result := invalidEntityRegex.ReplaceAll(data, []byte("&amp;"))
+	result := bytes.ReplaceAll(data, []byte("&"), []byte("&amp;"))
+
+	// Восстанавливаем валидные XML-сущности
+	result = bytes.ReplaceAll(result, []byte("&amp;amp;"), []byte("&amp;"))
+	result = bytes.ReplaceAll(result, []byte("&amp;lt;"), []byte("&lt;"))
+	result = bytes.ReplaceAll(result, []byte("&amp;gt;"), []byte("&gt;"))
+	result = bytes.ReplaceAll(result, []byte("&amp;quot;"), []byte("&quot;"))
+	result = bytes.ReplaceAll(result, []byte("&amp;apos;"), []byte("&apos;"))
+
+	// Восстанавливаем числовые сущности &#...; и &#x...;
+	// Используем regex для поиска паттернов &amp;#...; и &amp;#x...;
+	numericEntityRegex := regexp.MustCompile(`&amp;(#\d+;|#x[0-9a-fA-F]+;)`)
+	result = numericEntityRegex.ReplaceAll(result, []byte("&$1"))
+
+	// Восстанавливаем именованные сущности &name;
+	// Ищем паттерн &amp;[a-zA-Z][a-zA-Z0-9]*;
+	namedEntityRegex := regexp.MustCompile(`&amp;([a-zA-Z][a-zA-Z0-9]*;)`)
+	result = namedEntityRegex.ReplaceAll(result, []byte("&$1"))
 
 	return result
 }
