@@ -3,6 +3,7 @@ package gemini
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"google.golang.org/genai"
 )
@@ -22,10 +23,21 @@ type Client struct {
 var _ GeminiClient = (*Client)(nil)
 
 // NewClient создаёт новый клиент для работы с Gemini API.
-// SDK автоматически читает GEMINI_API_KEY из переменной окружения.
+// Читает GEMINI_API_KEY из переменной окружения и явно передаёт его в SDK.
 func NewClient() (*Client, error) {
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("GEMINI_API_KEY environment variable is required")
+	}
+
 	ctx := context.Background()
-	client, err := genai.NewClient(ctx, nil)
+
+	// Создаём конфигурацию с явно указанным API ключом
+	config := &genai.ClientConfig{
+		APIKey: apiKey,
+	}
+
+	client, err := genai.NewClient(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("create genai client: %w", err)
 	}

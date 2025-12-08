@@ -45,7 +45,7 @@ func main() {
 	tgClient := telegram.NewClient(envCfg.TelegramBotToken)
 
 	// Инициализируем Gemini клиент
-	// SDK автоматически читает GEMINI_API_KEY из переменной окружения
+	// Клиент явно читает GEMINI_API_KEY из переменной окружения
 	geminiClient, err := gemini.NewClient()
 	if err != nil {
 		log.Fatalf("failed to create Gemini client: %v", err)

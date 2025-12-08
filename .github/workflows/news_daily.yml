@@ -36,6 +36,18 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
 
+      - name: Verify secrets are set
+        run: |
+          if [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then
+            echo "ERROR: GEMINI_API_KEY secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]; then
+            echo "ERROR: TELEGRAM_BOT_TOKEN secret is not set"
+            exit 1
+          fi
+          echo "Secrets are configured (values are hidden)"
+
       - name: Run daily job
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
