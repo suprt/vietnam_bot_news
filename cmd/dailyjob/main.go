@@ -66,6 +66,9 @@ func main() {
 		summarizer = gemini.NewSummarizer(geminiClient, rootCfg.Gemini)
 		msgFormatter = formatter.NewFormatter(rootCfg.Pipeline)
 		sender = telegram.NewSender(tgClient)
+	} else {
+		// Если пропускаем Gemini, все равно инициализируем sender для тестового сообщения
+		sender = telegram.NewSender(tgClient)
 	}
 
 	var recipientResolver app.RecipientResolver

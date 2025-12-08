@@ -189,10 +189,24 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		log.Printf("Date range: %s (oldest) to %s (newest)", oldest.Format("2006-01-02 15:04"), newest.Format("2006-01-02 15:04"))
 	}
 
-	// Если пропускаем Gemini, просто логируем и выходим
+	// Если пропускаем Gemini, отправляем тестовое сообщение для проверки отправки
 	if p.skipGemini {
 		log.Println("SKIP_GEMINI=1: Skipping Gemini processing (categorization, ranking, summarization)")
 		log.Println("Pipeline stopped after article selection (no API calls made)")
+
+		// Отправляем тестовое сообщение для проверки отправки в Telegram
+		if len(recipients) > 0 && p.sender != nil {
+			testMessage := "🧪 *Тестовое сообщение*\n\nЭто тестовое сообщение для проверки отправки в Telegram. Полный дайджест будет отправляться автоматически раз в день после обработки новостей через Gemini."
+			log.Printf("Sending test message to %d recipient(s)...", len(recipients))
+			if err := p.sender.Send(ctx, recipients, []string{testMessage}); err != nil {
+				log.Printf("Warning: failed to send test message: %v", err)
+			} else {
+				log.Println("Test message sent successfully")
+			}
+		} else if len(recipients) == 0 {
+			log.Println("No recipients registered, skipping test message")
+		}
+
 		return nil
 	}
 
