@@ -60,25 +60,13 @@ func (m *RecipientManager) Resolve(ctx context.Context, state news.State) (news.
 			chatID := strconv.FormatInt(upd.Message.Chat.ID, 10)
 			name := deriveRecipientName(upd.Message)
 
-			// Отправляем приветственное сообщение при первой подписке или команде /start
-			isFirstTime := true
-			if _, exists := recipients[chatID]; exists {
-				isFirstTime = false
-			}
-
+			// Добавляем пользователя в список получателей
+			// Приветствие не отправляем, так как бот работает только при запуске workflow
+			// и задержка ответа будет выглядеть странно
 			recipients[chatID] = news.RecipientBinding{
 				Name:      name,
 				ChatID:    chatID,
 				UpdatedAt: time.Now(),
-			}
-
-			// Отправляем приветствие при первой подписке или команде /start
-			if isFirstTime || (upd.Message.Text != "" && strings.HasPrefix(strings.ToLower(upd.Message.Text), "/start")) {
-				greeting := "Привет! Ты подписан на ежедневный дайджест вьетнамских новостей. Дайджест будет приходить автоматически раз в день."
-				// Отправляем приветствие в фоне (не блокируем основной поток)
-				go func() {
-					_ = m.client.SendMessage(context.Background(), chatID, greeting, "")
-				}()
 			}
 		}
 
