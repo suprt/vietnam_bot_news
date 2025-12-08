@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/maine/vietnam_bot_news/internal/config"
 	"github.com/maine/vietnam_bot_news/internal/news"
@@ -246,14 +247,45 @@ func parseRSSFeed(data []byte) ([]rssItem, error) {
 // removeInvalidXMLControlChars удаляет недопустимые управляющие символы из XML.
 // XML не допускает символы 0x00-0x1F, кроме 0x09 (TAB), 0x0A (LF), 0x0D (CR).
 // Заменяем их на пробелы, чтобы не сломать структуру XML.
+// Обрабатываем UTF-8 правильно, чтобы не сломать многобайтовые последовательности.
 func removeInvalidXMLControlChars(data []byte) []byte {
-	result := make([]byte, 0, len(data))
-	for _, b := range data {
-		// Если это недопустимый управляющий символ (0x00-0x1F, кроме TAB, LF, CR), заменяем на пробел
-		if b <= 0x1F && b != 0x09 && b != 0x0A && b != 0x0D {
-			result = append(result, 0x20) // Заменяем на пробел
+	// Сначала проверяем, валиден ли UTF-8
+	if !utf8.Valid(data) {
+		// Если данные невалидны, пытаемся исправить, удаляя невалидные байты
+		data = fixInvalidUTF8(data)
+	}
+	
+	// Декодируем в строку для правильной обработки UTF-8
+	str := string(data)
+	var result strings.Builder
+	result.Grow(len(str))
+	
+	for _, r := range str {
+		// Если это недопустимый управляющий символ (U+0000-U+001F, кроме TAB, LF, CR), заменяем на пробел
+		if r <= 0x1F && r != 0x09 && r != 0x0A && r != 0x0D {
+			result.WriteRune(' ') // Заменяем на пробел
 		} else {
-			result = append(result, b)
+			result.WriteRune(r)
+		}
+	}
+	
+	return []byte(result.String())
+}
+
+// fixInvalidUTF8 пытается исправить невалидные UTF-8 последовательности.
+// Удаляет невалидные байты, сохраняя валидные символы.
+func fixInvalidUTF8(data []byte) []byte {
+	var result []byte
+	i := 0
+	for i < len(data) {
+		r, size := utf8.DecodeRune(data[i:])
+		if r == utf8.RuneError && size == 1 {
+			// Невалидный байт - пропускаем
+			i++
+		} else {
+			// Валидный символ - сохраняем
+			result = append(result, data[i:i+size]...)
+			i += size
 		}
 	}
 	return result
