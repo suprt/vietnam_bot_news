@@ -221,14 +221,8 @@ type rssItem struct {
 }
 
 func parseRSSFeed(data []byte) ([]rssItem, error) {
-	// Предварительная обработка: удаляем BOM и невидимые символы
-	data = removeBOMAndInvisibleChars(data)
-	
-	// Удаляем недопустимые управляющие символы из всего XML (не только из начала)
-	// XML не допускает символы 0x00-0x1F, кроме 0x09 (TAB), 0x0A (LF), 0x0D (CR)
-	data = removeInvalidXMLChars(data)
-	
-	// Исправляем распространённые проблемы с XML-сущностями
+	// Предварительная обработка: исправляем распространённые проблемы с XML
+	// Некоторые RSS-ленты содержат некорректные XML-сущности (например, & без ;)
 	data = fixXMLEntities(data)
 	
 	var feed rssFeed
@@ -244,65 +238,6 @@ func parseRSSFeed(data []byte) ([]rssItem, error) {
 	return feed.Channel.Items, nil
 }
 
-// removeBOMAndInvisibleChars удаляет BOM (Byte Order Mark) и невидимые символы в начале XML.
-// Некоторые серверы добавляют BOM или невидимые символы в начало ответа.
-func removeBOMAndInvisibleChars(data []byte) []byte {
-	if len(data) == 0 {
-		return data
-	}
-	
-	// Удаляем UTF-8 BOM (0xEF 0xBB 0xBF)
-	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
-		data = data[3:]
-	}
-	
-	// Удаляем UTF-16 BOM (0xFF 0xFE или 0xFE 0xFF)
-	if len(data) >= 2 && ((data[0] == 0xFF && data[1] == 0xFE) || (data[0] == 0xFE && data[1] == 0xFF)) {
-		data = data[2:]
-	}
-	
-	// Удаляем все невидимые управляющие символы в начале (0x00-0x1F, кроме пробелов, табов, переносов)
-	// Ищем первый видимый символ или '<'
-	start := 0
-	for i, b := range data {
-		// Если нашли '<', это начало XML - возвращаем с этой позиции
-		if b == '<' {
-			return data[i:]
-		}
-		// Пропускаем невидимые управляющие символы (0x00-0x1F, кроме пробелов, табов, переносов)
-		// 0x09 = TAB, 0x0A = LF, 0x0D = CR, 0x20 = SPACE
-		if b <= 0x1F && b != 0x09 && b != 0x0A && b != 0x0D {
-			// Это невидимый символ, пропускаем
-			continue
-		}
-		// Нашли видимый символ (но не '<') - возможно, это не XML, но все равно удаляем невидимые в начале
-		start = i
-		break
-	}
-	
-	// Если нашли начало видимых символов, возвращаем с этой позиции
-	if start > 0 {
-		return data[start:]
-	}
-	
-	return data
-}
-
-// removeInvalidXMLChars удаляет недопустимые управляющие символы из всего XML.
-// XML не допускает символы 0x00-0x1F, кроме 0x09 (TAB), 0x0A (LF), 0x0D (CR).
-// Заменяем их на пробелы, чтобы не сломать структуру XML.
-func removeInvalidXMLChars(data []byte) []byte {
-	result := make([]byte, 0, len(data))
-	for _, b := range data {
-		// Если это недопустимый управляющий символ (0x00-0x1F, кроме TAB, LF, CR), заменяем на пробел
-		if b <= 0x1F && b != 0x09 && b != 0x0A && b != 0x0D {
-			result = append(result, 0x20) // Заменяем на пробел
-		} else {
-			result = append(result, b)
-		}
-	}
-	return result
-}
 
 // fixXMLEntities исправляет распространённые проблемы с XML-сущностями в RSS-лентах.
 // Некоторые сайты используют & вместо &amp; в тексте.
