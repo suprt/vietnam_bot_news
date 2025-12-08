@@ -22,13 +22,16 @@ on:
 jobs:
   run-daily-digest:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Нужно для коммита state.json
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # Нужны права на запись для коммита state.json
+          # Используем встроенный GITHUB_TOKEN с правами на запись
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0  # Нужно для работы с git diff
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -79,12 +82,12 @@ jobs:
             echo '{"sent_articles":[],"last_run":"","telegram_state":{"last_update_id":0,"recipients":[]}}' > state/state.json
             git add state/state.json
             git commit -m "chore: initialize state.json [skip ci]"
-            git push
+            git push origin HEAD:${GITHUB_REF#refs/heads/}
           # Проверяем, есть ли изменения в state.json
           elif ! git diff --quiet state/state.json; then
             git add state/state.json
             git commit -m "chore: update state [skip ci]"
-            git push
+            git push origin HEAD:${GITHUB_REF#refs/heads/}
           else
             echo "No changes in state.json, skipping commit"
           fi
