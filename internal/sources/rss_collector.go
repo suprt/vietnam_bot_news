@@ -81,113 +81,80 @@ func (c *RSSCollector) getRSSFeeds(site config.Site) []string {
 }
 
 func (c *RSSCollector) fetchFeed(ctx context.Context, site config.Site, rssURL string) ([]news.ArticleRaw, error) {
-	// Пробуем несколько вариантов User-Agent, если первый не сработает
-	userAgents := []string{
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+	// Используем один User-Agent (retry для 403 бесполезен - блокировка не снимется)
+	userAgent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rssURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
 	}
 
-	var lastErr error
-	for attempt, userAgent := range userAgents {
-		if attempt > 0 {
-			// Небольшая задержка перед повтором
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(2 * time.Second):
-			}
-			log.Printf("Retrying RSS feed %s with different User-Agent (attempt %d/%d)", rssURL, attempt+1, len(userAgents))
-		}
+	// Добавляем реалистичные заголовки браузера, чтобы избежать блокировки (403 Forbidden)
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml, text/html, application/xhtml+xml, */*")
+	req.Header.Set("Accept-Language", "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Referer", site.URL) // Указываем, что пришли с главной страницы сайта
+	req.Header.Set("DNT", "1")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rssURL, nil)
-		if err != nil {
-			return nil, fmt.Errorf("build request: %w", err)
-		}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
 
-		// Добавляем реалистичные заголовки браузера, чтобы избежать блокировки (403 Forbidden)
-		// Некоторые сайты агрессивно блокируют ботов, поэтому имитируем обычный браузер
-		req.Header.Set("User-Agent", userAgent)
-		req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml, text/html, application/xhtml+xml, */*")
-		req.Header.Set("Accept-Language", "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7")
-		req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-		req.Header.Set("Connection", "keep-alive")
-		req.Header.Set("Referer", site.URL) // Указываем, что пришли с главной страницы сайта
-		req.Header.Set("DNT", "1")
-		req.Header.Set("Upgrade-Insecure-Requests", "1")
-
-		resp, err := c.client.Do(req)
-		if err != nil {
-			lastErr = fmt.Errorf("do request: %w", err)
-			continue
-		}
-
-		// Если получили 403, пробуем другой User-Agent
-		if resp.StatusCode == 403 {
-			resp.Body.Close()
-			lastErr = fmt.Errorf("unexpected status %d (blocked by server)", resp.StatusCode)
-			continue
-		}
-
-		// Если получили другую ошибку 4xx, не повторяем
-		if resp.StatusCode >= 400 {
-			resp.Body.Close()
-			return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
-		}
-
-		// Успешный ответ - обрабатываем
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			lastErr = fmt.Errorf("read body: %w", err)
-			continue
-		}
-
-		items, err := parseRSSFeed(body)
-		if err != nil {
-			lastErr = fmt.Errorf("parse RSS: %w", err)
-			continue
-		}
-
-		articles := make([]news.ArticleRaw, 0, len(items))
-		
-		// Лимит: обрабатываем только первые 100 статей из RSS (обычно самые свежие)
-		// Это защищает от обработки тысяч старых статей, которые могут быть в RSS
-		const maxArticlesPerFeed = 100
-		itemsToProcess := items
-		if len(items) > maxArticlesPerFeed {
-			itemsToProcess = items[:maxArticlesPerFeed]
-		}
-		
-		for i, item := range itemsToProcess {
-			if item.Link == "" || item.Title == "" {
-				continue
-			}
-
-			timestamp := parseTime(item.PubDate, c.clock())
-			content := strings.TrimSpace(selectContent(item))
-
-			articles = append(articles, news.ArticleRaw{
-				ID:          buildArticleID(site.ID, item.Link, timestamp),
-				Source:      site.ID,
-				Title:       strings.TrimSpace(item.Title),
-				URL:         strings.TrimSpace(item.Link),
-				PublishedAt: timestamp,
-				RawLanguage: detectLanguage(site),
-				RawContent:  content,
-				Metadata: map[string]string{
-					"rss_rank": strconv.Itoa(i),
-					"siteName": site.Name,
-				},
-			})
-		}
-
-		return articles, nil
+	// Если получили 403 или другую ошибку 4xx, сразу возвращаем ошибку (retry бесполезен)
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
-	// Если все попытки не удались, возвращаем последнюю ошибку
-	return nil, fmt.Errorf("failed after %d attempts: %w", len(userAgents), lastErr)
+	// Успешный ответ - обрабатываем
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+
+	items, err := parseRSSFeed(body)
+	if err != nil {
+		return nil, fmt.Errorf("parse RSS: %w", err)
+	}
+
+	articles := make([]news.ArticleRaw, 0, len(items))
+	
+	// Лимит: обрабатываем только первые 100 статей из RSS (обычно самые свежие)
+	// Это защищает от обработки тысяч старых статей, которые могут быть в RSS
+	const maxArticlesPerFeed = 100
+	itemsToProcess := items
+	if len(items) > maxArticlesPerFeed {
+		itemsToProcess = items[:maxArticlesPerFeed]
+	}
+	
+	for i, item := range itemsToProcess {
+		if item.Link == "" || item.Title == "" {
+			continue
+		}
+
+		timestamp := parseTime(item.PubDate, c.clock())
+		content := strings.TrimSpace(selectContent(item))
+
+		articles = append(articles, news.ArticleRaw{
+			ID:          buildArticleID(site.ID, item.Link, timestamp),
+			Source:      site.ID,
+			Title:       strings.TrimSpace(item.Title),
+			URL:         strings.TrimSpace(item.Link),
+			PublishedAt: timestamp,
+			RawLanguage: detectLanguage(site),
+			RawContent:  content,
+			Metadata: map[string]string{
+				"rss_rank": strconv.Itoa(i),
+				"siteName": site.Name,
+			},
+		})
+	}
+
+	return articles, nil
 }
 
 func detectLanguage(site config.Site) string {
@@ -254,8 +221,11 @@ type rssItem struct {
 }
 
 func parseRSSFeed(data []byte) ([]rssItem, error) {
-	// Предварительная обработка: исправляем распространённые проблемы с XML
-	// Некоторые RSS-ленты содержат некорректные XML-сущности (например, & без ;)
+	// Предварительная обработка: удаляем BOM и невидимые символы в начале XML
+	// U+001F и другие невидимые символы могут быть в начале файла
+	data = removeBOMAndInvisibleChars(data)
+	
+	// Исправляем распространённые проблемы с XML-сущностями
 	data = fixXMLEntities(data)
 	
 	var feed rssFeed
@@ -269,6 +239,39 @@ func parseRSSFeed(data []byte) ([]rssItem, error) {
 		}
 	}
 	return feed.Channel.Items, nil
+}
+
+// removeBOMAndInvisibleChars удаляет BOM (Byte Order Mark) и невидимые символы в начале XML.
+// Некоторые серверы добавляют BOM или невидимые символы (U+001F, U+FEFF и т.д.) в начало ответа.
+func removeBOMAndInvisibleChars(data []byte) []byte {
+	if len(data) == 0 {
+		return data
+	}
+	
+	// Удаляем UTF-8 BOM (0xEF 0xBB 0xBF)
+	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+		data = data[3:]
+	}
+	
+	// Удаляем UTF-16 BOM (0xFF 0xFE или 0xFE 0xFF)
+	if len(data) >= 2 && ((data[0] == 0xFF && data[1] == 0xFE) || (data[0] == 0xFE && data[1] == 0xFF)) {
+		data = data[2:]
+	}
+	
+	// Удаляем невидимые управляющие символы в начале (U+001F и подобные)
+	// Ищем первый видимый символ (обычно '<' для XML)
+	for i, b := range data {
+		if b == '<' {
+			return data[i:]
+		}
+		// Пропускаем только невидимые управляющие символы (0x00-0x1F, кроме пробелов, табов, переносов)
+		if b > 0x1F || b == 0x09 || b == 0x0A || b == 0x0D || b == 0x20 {
+			// Нашли видимый символ, но не '<' - возможно, это не XML, возвращаем как есть
+			break
+		}
+	}
+	
+	return data
 }
 
 // fixXMLEntities исправляет распространённые проблемы с XML-сущностями в RSS-лентах.
