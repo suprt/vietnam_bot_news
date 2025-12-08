@@ -1,7 +1,6 @@
 package sources
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
@@ -13,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/maine/vietnam_bot_news/internal/config"
 	"github.com/maine/vietnam_bot_news/internal/news"
@@ -82,23 +80,13 @@ func (c *RSSCollector) getRSSFeeds(site config.Site) []string {
 }
 
 func (c *RSSCollector) fetchFeed(ctx context.Context, site config.Site, rssURL string) ([]news.ArticleRaw, error) {
-	// Используем один User-Agent (retry для 403 бесполезен - блокировка не снимется)
-	userAgent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rssURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 
-	// Добавляем реалистичные заголовки браузера, чтобы избежать блокировки (403 Forbidden)
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml, text/html, application/xhtml+xml, */*")
-	req.Header.Set("Accept-Language", "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-	req.Header.Set("Connection", "keep-alive")
-	req.Header.Set("Referer", site.URL) // Указываем, что пришли с главной страницы сайта
-	req.Header.Set("DNT", "1")
-	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	// Добавляем User-Agent, чтобы избежать блокировки (403 Forbidden)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; RSSBot/1.0; +https://github.com/maine/vietnam_bot_news)")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -106,12 +94,10 @@ func (c *RSSCollector) fetchFeed(ctx context.Context, site config.Site, rssURL s
 	}
 	defer resp.Body.Close()
 
-	// Если получили 403 или другую ошибку 4xx, сразу возвращаем ошибку (retry бесполезен)
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
-	// Успешный ответ - обрабатываем
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
@@ -123,7 +109,7 @@ func (c *RSSCollector) fetchFeed(ctx context.Context, site config.Site, rssURL s
 	}
 
 	articles := make([]news.ArticleRaw, 0, len(items))
-	
+
 	// Лимит: обрабатываем только первые 100 статей из RSS (обычно самые свежие)
 	// Это защищает от обработки тысяч старых статей, которые могут быть в RSS
 	const maxArticlesPerFeed = 100
@@ -131,7 +117,7 @@ func (c *RSSCollector) fetchFeed(ctx context.Context, site config.Site, rssURL s
 	if len(items) > maxArticlesPerFeed {
 		itemsToProcess = items[:maxArticlesPerFeed]
 	}
-	
+
 	for i, item := range itemsToProcess {
 		if item.Link == "" || item.Title == "" {
 			continue
@@ -222,87 +208,9 @@ type rssItem struct {
 }
 
 func parseRSSFeed(data []byte) ([]rssItem, error) {
-	// Предварительная обработка: удаляем недопустимые управляющие символы из XML
-	// XML не допускает символы 0x00-0x1F, кроме 0x09 (TAB), 0x0A (LF), 0x0D (CR)
-	// Заменяем их на пробелы, чтобы не сломать структуру XML
-	data = removeInvalidXMLControlChars(data)
-	
-	// Исправляем распространённые проблемы с XML-сущностями
-	// Некоторые RSS-ленты содержат некорректные XML-сущности (например, & без ;)
-	data = fixXMLEntities(data)
-	
 	var feed rssFeed
-	// Сначала пытаемся стандартный парсер
 	if err := xml.Unmarshal(data, &feed); err != nil {
-		// Если не получилось, используем более толерантный декодер
-		decoder := xml.NewDecoder(bytes.NewReader(data))
-		decoder.Strict = false
-		if err := decoder.Decode(&feed); err != nil {
-			return nil, fmt.Errorf("parse RSS XML: %w", err)
-		}
+		return nil, err
 	}
 	return feed.Channel.Items, nil
-}
-
-// removeInvalidXMLControlChars удаляет недопустимые управляющие символы из XML.
-// XML не допускает символы 0x00-0x1F, кроме 0x09 (TAB), 0x0A (LF), 0x0D (CR).
-// Заменяем их на пробелы, чтобы не сломать структуру XML.
-// Обрабатываем UTF-8 правильно, чтобы не сломать многобайтовые последовательности.
-func removeInvalidXMLControlChars(data []byte) []byte {
-	// Сначала проверяем, валиден ли UTF-8
-	if !utf8.Valid(data) {
-		// Если данные невалидны, пытаемся исправить, удаляя невалидные байты
-		data = fixInvalidUTF8(data)
-	}
-	
-	// Декодируем в строку для правильной обработки UTF-8
-	str := string(data)
-	var result strings.Builder
-	result.Grow(len(str))
-	
-	for _, r := range str {
-		// Если это недопустимый управляющий символ (U+0000-U+001F, кроме TAB, LF, CR), заменяем на пробел
-		if r <= 0x1F && r != 0x09 && r != 0x0A && r != 0x0D {
-			result.WriteRune(' ') // Заменяем на пробел
-		} else {
-			result.WriteRune(r)
-		}
-	}
-	
-	return []byte(result.String())
-}
-
-// fixInvalidUTF8 пытается исправить невалидные UTF-8 последовательности.
-// Удаляет невалидные байты, сохраняя валидные символы.
-func fixInvalidUTF8(data []byte) []byte {
-	var result []byte
-	i := 0
-	for i < len(data) {
-		r, size := utf8.DecodeRune(data[i:])
-		if r == utf8.RuneError && size == 1 {
-			// Невалидный байт - пропускаем
-			i++
-		} else {
-			// Валидный символ - сохраняем
-			result = append(result, data[i:i+size]...)
-			i += size
-		}
-	}
-	return result
-}
-
-
-// fixXMLEntities исправляет распространённые проблемы с XML-сущностями в RSS-лентах.
-// Некоторые сайты используют & вместо &amp; в тексте.
-func fixXMLEntities(data []byte) []byte {
-	// Заменяем & на &amp; только если это не валидная XML-сущность
-	// Это простая эвристика, но помогает в большинстве случаев
-	result := bytes.ReplaceAll(data, []byte("& "), []byte("&amp; "))
-	result = bytes.ReplaceAll(result, []byte("&,"), []byte("&amp;,"))
-	result = bytes.ReplaceAll(result, []byte("&."), []byte("&amp;."))
-	result = bytes.ReplaceAll(result, []byte("&;"), []byte("&amp;;"))
-	
-	// Исправляем случаи, когда & стоит в конце строки или перед пробелом без сущности
-	// Это более сложная логика, но для MVP достаточно простых замен
-	return result
 }
