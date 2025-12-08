@@ -47,6 +47,11 @@ func (m *RecipientManager) Resolve(ctx context.Context, state news.State) (news.
 		}
 
 		var maxUpdateID int64 = state.Telegram.LastUpdateID
+
+		// Собираем последнее сообщение от каждого пользователя
+		// Это позволяет обработать только последнюю команду, игнорируя промежуточные
+		lastMessages := make(map[string]*Message) // chatID -> последнее сообщение
+
 		for _, upd := range updates {
 			if upd.UpdateID > maxUpdateID {
 				maxUpdateID = upd.UpdateID
@@ -59,10 +64,17 @@ func (m *RecipientManager) Resolve(ctx context.Context, state news.State) (news.
 			}
 
 			chatID := strconv.FormatInt(upd.Message.Chat.ID, 10)
-			name := deriveRecipientName(upd.Message)
+			// Сохраняем последнее сообщение от каждого пользователя
+			// (более поздние обновления перезаписывают более ранние)
+			lastMessages[chatID] = upd.Message
+		}
+
+		// Обрабатываем только последнее сообщение от каждого пользователя
+		for chatID, msg := range lastMessages {
+			name := deriveRecipientName(msg)
 
 			// Обрабатываем команды
-			text := strings.TrimSpace(upd.Message.Text)
+			text := strings.TrimSpace(msg.Text)
 			textLower := strings.ToLower(text)
 
 			// Команда /stop - отписка
