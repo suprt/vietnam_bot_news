@@ -70,13 +70,23 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Создаем директорию state, если её нет
+          mkdir -p state
+          
+          # Проверяем, существует ли файл state.json
+          if [ ! -f "state/state.json" ]; then
+            echo "state.json does not exist, creating empty file"
+            echo '{"sent_articles":[],"last_run":"","telegram_state":{"last_update_id":0,"recipients":[]}}' > state/state.json
+            git add state/state.json
+            git commit -m "chore: initialize state.json [skip ci]"
+            git push
           # Проверяем, есть ли изменения в state.json
-          if git diff --quiet state/state.json; then
-            echo "No changes in state.json, skipping commit"
-          else
+          elif ! git diff --quiet state/state.json; then
             git add state/state.json
             git commit -m "chore: update state [skip ci]"
             git push
+          else
+            echo "No changes in state.json, skipping commit"
           fi
 
       - name: Report failure

@@ -1,10 +1,11 @@
 sites:
-  - id: "datviet"
-    name: "Dat Viet"
-    url: "https://datviet.com"
-    rss_feeds:
-      - "https://datviet.com/feed"
-    priority: 1
+  # Временно отключено из-за Cloudflare 403 ошибок
+  # - id: "datviet"
+  #   name: "Dat Viet"
+  #   url: "https://datviet.com"
+  #   rss_feeds:
+  #     - "https://datviet.com/feed"
+  #   priority: 1
 
   - id: "plo"
     name: "Báo Pháp Luật (PLO)"
@@ -41,28 +42,29 @@ sites:
       - "https://thanhnien.vn/rss/giai-tri.rss"
     priority: 1
 
-  - id: "vietbao"
-    name: "Việt Báo"
-    url: "https://vietbao.vn"
-    rss_feeds:
-      # Главная лента
-      - "https://vietbao.vn/rss/trang-chu"
-      # Политика / Мир
-      - "https://vietbao.vn/rss/doi-ngoai"
-      # Общество
-      - "https://vietbao.vn/rss/xa-hoi"
-      - "https://vietbao.vn/rss/xa-hoi/phap-luat"
-      # Экономика
-      - "https://vietbao.vn/rss/kinh-doanh"
-      # Спорт
-      - "https://vietbao.vn/rss/the-thao"
-      # Культура
-      - "https://vietbao.vn/rss/van-hoa-giai-tri"
-      # Технологии
-      - "https://vietbao.vn/rss/xe-cong-nghe"
-      # Здоровье
-      - "https://vietbao.vn/rss/suc-khoe"
-    priority: 1
+  # Временно отключено из-за Cloudflare 403 ошибок
+  # - id: "vietbao"
+  #   name: "Việt Báo"
+  #   url: "https://vietbao.vn"
+  #   rss_feeds:
+  #     # Главная лента
+  #     - "https://vietbao.vn/rss/trang-chu"
+  #     # Политика / Мир
+  #     - "https://vietbao.vn/rss/doi-ngoai"
+  #     # Общество
+  #     - "https://vietbao.vn/rss/xa-hoi"
+  #     - "https://vietbao.vn/rss/xa-hoi/phap-luat"
+  #     # Экономика
+  #     - "https://vietbao.vn/rss/kinh-doanh"
+  #     # Спорт
+  #     - "https://vietbao.vn/rss/the-thao"
+  #     # Культура
+  #     - "https://vietbao.vn/rss/van-hoa-giai-tri"
+  #     # Технологии
+  #     - "https://vietbao.vn/rss/xe-cong-nghe"
+  #     # Здоровье
+  #     - "https://vietbao.vn/rss/suc-khoe"
+  #   priority: 1
 
   - id: "vietnamplus"
     name: "VietnamPlus"
