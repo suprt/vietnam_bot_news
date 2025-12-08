@@ -44,19 +44,29 @@ func main() {
 	stateStore := state.NewFileStore("state/state.json")
 	tgClient := telegram.NewClient(envCfg.TelegramBotToken)
 
-	// Инициализируем Gemini клиент
-	// Клиент явно читает GEMINI_API_KEY из переменной окружения
-	geminiClient, err := gemini.NewClient()
-	if err != nil {
-		log.Fatalf("failed to create Gemini client: %v", err)
-	}
+	// Инициализируем Gemini клиент только если не пропускаем Gemini
+	var geminiClient *gemini.Client
+	var categorizer app.Categorizer
+	var ranker app.Ranker
+	var summarizer app.Summarizer
+	var msgFormatter app.Formatter
+	var sender app.Sender
 
-	// Инициализируем все модули пайплайна
-	categorizer := gemini.NewCategorizer(geminiClient, rootCfg.Gemini, rootCfg.Pipeline)
-	ranker := ranking.NewRanker(rootCfg.Pipeline, geminiClient, rootCfg.Gemini)
-	summarizer := gemini.NewSummarizer(geminiClient, rootCfg.Gemini)
-	msgFormatter := formatter.NewFormatter(rootCfg.Pipeline)
-	sender := telegram.NewSender(tgClient)
+	if !envCfg.SkipGemini {
+		// Клиент явно читает GEMINI_API_KEY из переменной окружения
+		var err error
+		geminiClient, err = gemini.NewClient()
+		if err != nil {
+			log.Fatalf("failed to create Gemini client: %v", err)
+		}
+
+		// Инициализируем все модули пайплайна
+		categorizer = gemini.NewCategorizer(geminiClient, rootCfg.Gemini, rootCfg.Pipeline)
+		ranker = ranking.NewRanker(rootCfg.Pipeline, geminiClient, rootCfg.Gemini)
+		summarizer = gemini.NewSummarizer(geminiClient, rootCfg.Gemini)
+		msgFormatter = formatter.NewFormatter(rootCfg.Pipeline)
+		sender = telegram.NewSender(tgClient)
+	}
 
 	var recipientResolver app.RecipientResolver
 	if rootCfg.Pipeline.AutoSubscribe {
@@ -76,6 +86,8 @@ func main() {
 		StateStore:    stateStore,
 		Clock:         nil, // используем time.Now по умолчанию
 		ForceDispatch: envCfg.ForceDispatch,
+		SkipGemini:    envCfg.SkipGemini,
+		Config:        rootCfg.Pipeline,
 	})
 
 	if err := p.Run(ctx); err != nil {

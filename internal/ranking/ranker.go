@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/maine/vietnam_bot_news/internal/config"
 	"github.com/maine/vietnam_bot_news/internal/gemini"
@@ -91,13 +93,43 @@ func (r *Ranker) rankCategory(ctx context.Context, category string, articles []n
 
 	var allScored []news.CategorizedArticle
 
-	// Разбиваем на батчи
-	for i := 0; i < len(articles); i += r.batchSize {
-		end := i + r.batchSize
+	// Оптимизация: если статей меньше или равно batchSize, обрабатываем все за один запрос
+	effectiveBatchSize := r.batchSize
+	if len(articles) <= r.batchSize {
+		effectiveBatchSize = len(articles)
+		log.Printf("Ranking all %d articles in category '%s' in 1 batch (optimization: articles <= batch size)", len(articles), category)
+	} else {
+		totalBatches := (len(articles) + r.batchSize - 1) / r.batchSize
+		log.Printf("Ranking %d articles in category '%s' in %d batches (batch size: %d)", len(articles), category, totalBatches, r.batchSize)
+	}
+
+	// Минимальная задержка между запросами для соблюдения RPM=5 (12 секунд между запросами)
+	const minDelayBetweenRequests = 12 * time.Second
+	lastRequestTime := time.Now()
+	requestCount := 0
+
+	for i := 0; i < len(articles); i += effectiveBatchSize {
+		end := i + effectiveBatchSize
 		if end > len(articles) {
 			end = len(articles)
 		}
+
+		// Соблюдаем задержку между запросами
+		elapsed := time.Since(lastRequestTime)
+		if elapsed < minDelayBetweenRequests && requestCount > 0 {
+			waitTime := minDelayBetweenRequests - elapsed
+			log.Printf("Waiting %v before next Gemini API request (RPM limit)...", waitTime)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(waitTime):
+			}
+		}
+
 		batch := articles[i:end]
+		requestCount++
+		totalBatches := (len(articles) + effectiveBatchSize - 1) / effectiveBatchSize
+		log.Printf("Processing ranking batch %d/%d for category '%s' (%d articles)...", requestCount, totalBatches, category, len(batch))
 
 		scored, err := r.rankBatch(ctx, category, batch)
 		if err != nil {
@@ -105,7 +137,10 @@ func (r *Ranker) rankCategory(ctx context.Context, category string, articles []n
 		}
 
 		allScored = append(allScored, scored...)
+		lastRequestTime = time.Now()
 	}
+
+	log.Printf("Ranking complete for category '%s': %d articles scored in %d API requests", category, len(allScored), requestCount)
 
 	return allScored, nil
 }
@@ -136,6 +171,12 @@ func (r *Ranker) rankBatch(ctx context.Context, category string, articles []news
 	// Вызываем Gemini API
 	responseText, err := r.geminiClient.GenerateText(ctx, r.cfg.ModelRanking, prompt)
 	if err != nil {
+		// Проверяем, является ли это ошибкой квоты (RPD)
+		errStr := err.Error()
+		if strings.Contains(strings.ToLower(errStr), "quota") || strings.Contains(strings.ToLower(errStr), "rpd") {
+			log.Printf("CRITICAL: Gemini API quota exceeded during ranking. Stopping batch processing.")
+			return nil, fmt.Errorf("gemini API quota exceeded (RPD limit): %w", err)
+		}
 		return nil, fmt.Errorf("generate text: %w", err)
 	}
 

@@ -3,7 +3,10 @@ package gemini
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
+	"strings"
+	"time"
 
 	"google.golang.org/genai"
 )
@@ -50,16 +53,78 @@ func NewClient() (*Client, error) {
 // GenerateText отправляет запрос к Gemini API и возвращает текстовый ответ.
 // model - имя модели (например, "gemini-2.5-flash")
 // prompt - текстовый промпт для модели
+// Включает обработку ошибок лимитов и retry-логику.
 func (c *Client) GenerateText(ctx context.Context, model string, prompt string) (string, error) {
-	result, err := c.client.Models.GenerateContent(
-		ctx,
-		model,
-		genai.Text(prompt),
-		nil,
-	)
-	if err != nil {
+	const maxRetries = 3
+	const baseDelay = 12 * time.Second // Минимум 12 секунд между запросами для соблюдения RPM=5
+
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			// Экспоненциальная задержка с минимумом для соблюдения RPM
+			delay := baseDelay * time.Duration(attempt)
+			if delay > 60*time.Second {
+				delay = 60 * time.Second
+			}
+			log.Printf("Retrying Gemini API request (attempt %d/%d) after %v...", attempt+1, maxRetries, delay)
+
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		result, err := c.client.Models.GenerateContent(
+			ctx,
+			model,
+			genai.Text(prompt),
+			nil,
+		)
+		if err == nil {
+			text, textErr := result.Text()
+			if textErr != nil {
+				return "", fmt.Errorf("get text from result: %w", textErr)
+			}
+			return text, nil
+		}
+
+		lastErr = err
+
+		// Проверяем, является ли ошибка связанной с лимитами
+		errStr := err.Error()
+		if isRateLimitError(errStr) {
+			log.Printf("Rate limit error from Gemini API: %v", err)
+			// Продолжаем retry
+			continue
+		}
+
+		if isQuotaExceededError(errStr) {
+			// Quota exceeded - не повторяем, это критическая ошибка
+			return "", fmt.Errorf("gemini API quota exceeded (RPD limit reached): %w", err)
+		}
+
+		// Для других ошибок не повторяем
 		return "", fmt.Errorf("generate content: %w", err)
 	}
 
-	return result.Text()
+	return "", fmt.Errorf("max retries exceeded: %w", lastErr)
+}
+
+// isRateLimitError проверяет, является ли ошибка связанной с rate limit (RPM).
+func isRateLimitError(errStr string) bool {
+	errLower := strings.ToLower(errStr)
+	return strings.Contains(errLower, "rate limit") ||
+		strings.Contains(errLower, "429") ||
+		strings.Contains(errLower, "too many requests") ||
+		strings.Contains(errLower, "resource exhausted")
+}
+
+// isQuotaExceededError проверяет, является ли ошибка связанной с превышением квоты (RPD).
+func isQuotaExceededError(errStr string) bool {
+	errLower := strings.ToLower(errStr)
+	return strings.Contains(errLower, "quota") ||
+		strings.Contains(errLower, "quota exceeded") ||
+		strings.Contains(errLower, "daily limit") ||
+		strings.Contains(errLower, "403")
 }

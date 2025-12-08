@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"time"
 
+	"github.com/maine/vietnam_bot_news/internal/config"
 	"github.com/maine/vietnam_bot_news/internal/news"
 )
 
@@ -77,6 +79,8 @@ type PipelineDeps struct {
 	StateStore    StateStore
 	Clock         Clock
 	ForceDispatch bool
+	SkipGemini    bool
+	Config        config.Pipeline
 }
 
 // Pipeline инкапсулирует ежедневный процесс.
@@ -92,6 +96,8 @@ type Pipeline struct {
 	stateStore    StateStore
 	clock         Clock
 	forceDispatch bool
+	skipGemini    bool
+	cfg           config.Pipeline
 }
 
 // NewPipeline создаёт новый экземпляр пайплайна.
@@ -113,6 +119,8 @@ func NewPipeline(deps PipelineDeps) *Pipeline {
 		stateStore:    deps.StateStore,
 		clock:         clock,
 		forceDispatch: deps.ForceDispatch,
+		skipGemini:    deps.SkipGemini,
+		cfg:           deps.Config,
 	}
 }
 
@@ -149,6 +157,45 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	}
 	log.Printf("After filtering: %d articles", len(filtered))
 
+	// Оптимизация RPD: ограничиваем количество статей перед отправкой в Gemini
+	// Берем только самые свежие статьи, чтобы не превысить лимит RPD=20
+	// Это критично, так как даже с батчами 100, 1859 статей = ~19 запросов только на категоризацию
+	if p.cfg.MaxArticlesBeforeGemini > 0 && len(filtered) > p.cfg.MaxArticlesBeforeGemini {
+		// Сортируем по дате публикации (самые свежие первыми)
+		sort.Slice(filtered, func(i, j int) bool {
+			return filtered[i].PublishedAt.After(filtered[j].PublishedAt)
+		})
+		originalCount := len(filtered)
+		filtered = filtered[:p.cfg.MaxArticlesBeforeGemini]
+		log.Printf("Limited articles from %d to %d (taking most recent) to optimize Gemini API usage (RPD limit)", originalCount, len(filtered))
+	}
+
+	// Детальная статистика по отобранным статьям
+	log.Println("=== Article Selection Statistics ===")
+	log.Printf("Total articles after filtering and limiting: %d", len(filtered))
+	if len(filtered) > 0 {
+		// Группируем по источникам
+		sourceCount := make(map[string]int)
+		for _, article := range filtered {
+			sourceCount[article.Source]++
+		}
+		log.Println("Articles by source:")
+		for source, count := range sourceCount {
+			log.Printf("  - %s: %d articles", source, count)
+		}
+		// Показываем диапазон дат
+		oldest := filtered[len(filtered)-1].PublishedAt
+		newest := filtered[0].PublishedAt
+		log.Printf("Date range: %s (oldest) to %s (newest)", oldest.Format("2006-01-02 15:04"), newest.Format("2006-01-02 15:04"))
+	}
+
+	// Если пропускаем Gemini, просто логируем и выходим
+	if p.skipGemini {
+		log.Println("SKIP_GEMINI=1: Skipping Gemini processing (categorization, ranking, summarization)")
+		log.Println("Pipeline stopped after article selection (no API calls made)")
+		return nil
+	}
+
 	log.Println("Step 3: Categorizing articles with Gemini...")
 	categorized, err := p.categorizer.Categorize(ctx, filtered)
 	if err != nil {
@@ -169,6 +216,11 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		return fmt.Errorf("summarize articles: %w", err)
 	}
 	log.Printf("Summarized %d articles", len(digestEntries))
+
+	log.Println("=== Gemini API Usage Summary ===")
+	log.Printf("Total articles processed: %d filtered -> %d categorized -> %d ranked -> %d summarized",
+		len(filtered), len(categorized), len(ranked), len(digestEntries))
+	log.Println("(Check individual step logs above for exact API request counts)")
 
 	log.Println("Step 6: Formatting messages...")
 	messages, err := p.formatter.BuildMessages(digestEntries)
@@ -199,20 +251,28 @@ func (p *Pipeline) Run(ctx context.Context) error {
 func (p *Pipeline) validateDeps() error {
 	// recipients опционален - он может быть nil, если auto_subscribe отключен
 	// В этом случае pipeline будет работать только в режиме force_dispatch
+	// Если skipGemini=true, то categorizer, ranker, summarizer, formatter, sender не обязательны
 	switch {
 	case p.collector == nil,
 		p.filter == nil,
-		p.categorizer == nil,
-		p.ranker == nil,
-		p.summarizer == nil,
-		p.formatter == nil,
-		p.sender == nil,
 		p.stateStore == nil,
 		p.clock == nil:
 		return ErrNotConfigured
-	default:
-		return nil
 	}
+
+	// Если не пропускаем Gemini, проверяем обязательные зависимости
+	if !p.skipGemini {
+		switch {
+		case p.categorizer == nil,
+			p.ranker == nil,
+			p.summarizer == nil,
+			p.formatter == nil,
+			p.sender == nil:
+			return ErrNotConfigured
+		}
+	}
+
+	return nil
 }
 
 func (p *Pipeline) updateState(prev news.State, entries []news.DigestEntry) news.State {

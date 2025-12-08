@@ -81,71 +81,113 @@ func (c *RSSCollector) getRSSFeeds(site config.Site) []string {
 }
 
 func (c *RSSCollector) fetchFeed(ctx context.Context, site config.Site, rssURL string) ([]news.ArticleRaw, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rssURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
+	// Пробуем несколько вариантов User-Agent, если первый не сработает
+	userAgents := []string{
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
 	}
 
-	// Добавляем User-Agent, чтобы избежать блокировки (403 Forbidden)
-	// Многие сайты блокируют запросы без User-Agent
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; RSSBot/1.0; +https://github.com/maine/vietnam_bot_news)")
-	req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml, */*")
-	req.Header.Set("Accept-Language", "vi,en;q=0.9")
+	var lastErr error
+	for attempt, userAgent := range userAgents {
+		if attempt > 0 {
+			// Небольшая задержка перед повтором
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(2 * time.Second):
+			}
+			log.Printf("Retrying RSS feed %s with different User-Agent (attempt %d/%d)", rssURL, attempt+1, len(userAgents))
+		}
 
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("do request: %w", err)
-	}
-	defer resp.Body.Close()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rssURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("build request: %w", err)
+		}
 
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
-	}
+		// Добавляем реалистичные заголовки браузера, чтобы избежать блокировки (403 Forbidden)
+		// Некоторые сайты агрессивно блокируют ботов, поэтому имитируем обычный браузер
+		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml, text/html, application/xhtml+xml, */*")
+		req.Header.Set("Accept-Language", "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7")
+		req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+		req.Header.Set("Connection", "keep-alive")
+		req.Header.Set("Referer", site.URL) // Указываем, что пришли с главной страницы сайта
+		req.Header.Set("DNT", "1")
+		req.Header.Set("Upgrade-Insecure-Requests", "1")
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
-	}
-
-	items, err := parseRSSFeed(body)
-	if err != nil {
-		return nil, fmt.Errorf("parse RSS: %w", err)
-	}
-
-	articles := make([]news.ArticleRaw, 0, len(items))
-	
-	// Лимит: обрабатываем только первые 100 статей из RSS (обычно самые свежие)
-	// Это защищает от обработки тысяч старых статей, которые могут быть в RSS
-	const maxArticlesPerFeed = 100
-	itemsToProcess := items
-	if len(items) > maxArticlesPerFeed {
-		itemsToProcess = items[:maxArticlesPerFeed]
-	}
-	
-	for i, item := range itemsToProcess {
-		if item.Link == "" || item.Title == "" {
+		resp, err := c.client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("do request: %w", err)
 			continue
 		}
 
-		timestamp := parseTime(item.PubDate, c.clock())
-		content := strings.TrimSpace(selectContent(item))
+		// Если получили 403, пробуем другой User-Agent
+		if resp.StatusCode == 403 {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("unexpected status %d (blocked by server)", resp.StatusCode)
+			continue
+		}
 
-		articles = append(articles, news.ArticleRaw{
-			ID:          buildArticleID(site.ID, item.Link, timestamp),
-			Source:      site.ID,
-			Title:       strings.TrimSpace(item.Title),
-			URL:         strings.TrimSpace(item.Link),
-			PublishedAt: timestamp,
-			RawLanguage: detectLanguage(site),
-			RawContent:  content,
-			Metadata: map[string]string{
-				"rss_rank": strconv.Itoa(i),
-				"siteName": site.Name,
-			},
-		})
+		// Если получили другую ошибку 4xx, не повторяем
+		if resp.StatusCode >= 400 {
+			resp.Body.Close()
+			return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
+		}
+
+		// Успешный ответ - обрабатываем
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("read body: %w", err)
+			continue
+		}
+
+		items, err := parseRSSFeed(body)
+		if err != nil {
+			lastErr = fmt.Errorf("parse RSS: %w", err)
+			continue
+		}
+
+		articles := make([]news.ArticleRaw, 0, len(items))
+		
+		// Лимит: обрабатываем только первые 100 статей из RSS (обычно самые свежие)
+		// Это защищает от обработки тысяч старых статей, которые могут быть в RSS
+		const maxArticlesPerFeed = 100
+		itemsToProcess := items
+		if len(items) > maxArticlesPerFeed {
+			itemsToProcess = items[:maxArticlesPerFeed]
+		}
+		
+		for i, item := range itemsToProcess {
+			if item.Link == "" || item.Title == "" {
+				continue
+			}
+
+			timestamp := parseTime(item.PubDate, c.clock())
+			content := strings.TrimSpace(selectContent(item))
+
+			articles = append(articles, news.ArticleRaw{
+				ID:          buildArticleID(site.ID, item.Link, timestamp),
+				Source:      site.ID,
+				Title:       strings.TrimSpace(item.Title),
+				URL:         strings.TrimSpace(item.Link),
+				PublishedAt: timestamp,
+				RawLanguage: detectLanguage(site),
+				RawContent:  content,
+				Metadata: map[string]string{
+					"rss_rank": strconv.Itoa(i),
+					"siteName": site.Name,
+				},
+			})
+		}
+
+		return articles, nil
 	}
 
-	return articles, nil
+	// Если все попытки не удались, возвращаем последнюю ошибку
+	return nil, fmt.Errorf("failed after %d attempts: %w", len(userAgents), lastErr)
 }
 
 func detectLanguage(site config.Site) string {

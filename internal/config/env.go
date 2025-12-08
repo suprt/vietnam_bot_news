@@ -10,6 +10,7 @@ type EnvConfig struct {
 	TelegramBotToken string
 	GeminiAPIKey     string
 	ForceDispatch    bool
+	SkipGemini       bool // Пропустить этапы Gemini (только логи фильтрации)
 }
 
 // LoadEnvConfig читает переменные окружения и возвращает конфигурацию.
@@ -20,9 +21,12 @@ func LoadEnvConfig() (*EnvConfig, error) {
 		return nil, fmt.Errorf("TELEGRAM_BOT_TOKEN environment variable is required")
 	}
 
+	skipGemini := os.Getenv("SKIP_GEMINI") == "1"
+
+	// GEMINI_API_KEY обязателен только если не пропускаем Gemini
 	geminiKey := os.Getenv("GEMINI_API_KEY")
-	if geminiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY environment variable is required")
+	if !skipGemini && geminiKey == "" {
+		return nil, fmt.Errorf("GEMINI_API_KEY environment variable is required (or set SKIP_GEMINI=1)")
 	}
 
 	forceDispatch := os.Getenv("FORCE_DISPATCH") == "1"
@@ -31,6 +35,6 @@ func LoadEnvConfig() (*EnvConfig, error) {
 		TelegramBotToken: tgToken,
 		GeminiAPIKey:     geminiKey,
 		ForceDispatch:    forceDispatch,
+		SkipGemini:       skipGemini,
 	}, nil
 }
-

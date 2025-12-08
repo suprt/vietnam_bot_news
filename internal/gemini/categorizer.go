@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 
 	"github.com/maine/vietnam_bot_news/internal/config"
 	"github.com/maine/vietnam_bot_news/internal/news"
@@ -40,21 +42,54 @@ func (c *Categorizer) Categorize(ctx context.Context, articles []news.ArticleRaw
 
 	var results []news.CategorizedArticle
 
-	// Разбиваем на батчи
-	for i := 0; i < len(articles); i += c.batchSize {
-		end := i + c.batchSize
+	// Оптимизация: если статей меньше или равно batchSize, обрабатываем все за один запрос
+	effectiveBatchSize := c.batchSize
+	if len(articles) <= c.batchSize {
+		effectiveBatchSize = len(articles)
+		log.Printf("Categorizing all %d articles in 1 batch (optimization: articles <= batch size)", len(articles))
+	} else {
+		totalBatches := (len(articles) + c.batchSize - 1) / c.batchSize
+		log.Printf("Categorizing %d articles in %d batches (batch size: %d)", len(articles), totalBatches, c.batchSize)
+	}
+
+	// Минимальная задержка между запросами для соблюдения RPM=5 (12 секунд между запросами)
+	const minDelayBetweenRequests = 12 * time.Second
+	lastRequestTime := time.Now()
+	requestCount := 0
+
+	for i := 0; i < len(articles); i += effectiveBatchSize {
+		end := i + effectiveBatchSize
 		if end > len(articles) {
 			end = len(articles)
 		}
 
+		// Соблюдаем задержку между запросами для соблюдения RPM лимита
+		elapsed := time.Since(lastRequestTime)
+		if elapsed < minDelayBetweenRequests && requestCount > 0 {
+			waitTime := minDelayBetweenRequests - elapsed
+			log.Printf("Waiting %v before next Gemini API request (RPM limit)...", waitTime)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(waitTime):
+			}
+		}
+
 		batch := articles[i:end]
+		requestCount++
+		totalBatches := (len(articles) + effectiveBatchSize - 1) / effectiveBatchSize
+		log.Printf("Processing categorization batch %d/%d (%d articles)...", requestCount, totalBatches, len(batch))
+
 		batchResults, err := c.categorizeBatch(ctx, batch)
 		if err != nil {
 			return nil, fmt.Errorf("categorize batch [%d-%d]: %w", i, end-1, err)
 		}
 
 		results = append(results, batchResults...)
+		lastRequestTime = time.Now()
 	}
+
+	log.Printf("Categorization complete: %d articles categorized in %d API requests", len(results), requestCount)
 
 	return results, nil
 }
@@ -87,6 +122,12 @@ func (c *Categorizer) categorizeBatch(ctx context.Context, articles []news.Artic
 	// Вызываем Gemini API
 	responseText, err := c.client.GenerateText(ctx, c.cfg.ModelCategorization, prompt)
 	if err != nil {
+		// Проверяем, является ли это ошибкой квоты (RPD)
+		errStr := err.Error()
+		if strings.Contains(strings.ToLower(errStr), "quota") || strings.Contains(strings.ToLower(errStr), "rpd") {
+			log.Printf("CRITICAL: Gemini API quota exceeded during categorization. Stopping batch processing.")
+			return nil, fmt.Errorf("gemini API quota exceeded (RPD limit): %w", err)
+		}
 		return nil, fmt.Errorf("generate text: %w", err)
 	}
 

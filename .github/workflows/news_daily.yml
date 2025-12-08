@@ -13,6 +13,11 @@ on:
         required: false
         default: '0'
         type: string
+      skip_gemini:
+        description: 'Skip Gemini processing, only show article selection logs (set to 1 to enable)'
+        required: false
+        default: '0'
+        type: string
 
 jobs:
   run-daily-digest:
@@ -38,9 +43,12 @@ jobs:
 
       - name: Verify secrets are set
         run: |
-          if [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then
-            echo "ERROR: GEMINI_API_KEY secret is not set"
-            exit 1
+          SKIP_GEMINI="${{ github.event.inputs.skip_gemini || '0' }}"
+          if [ "$SKIP_GEMINI" != "1" ]; then
+            if [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then
+              echo "ERROR: GEMINI_API_KEY secret is not set"
+              exit 1
+            fi
           fi
           if [ -z "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]; then
             echo "ERROR: TELEGRAM_BOT_TOKEN secret is not set"
@@ -53,6 +61,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           FORCE_DISPATCH: ${{ github.event.inputs.force_dispatch || '0' }}
+          SKIP_GEMINI: ${{ github.event.inputs.skip_gemini || '0' }}
         run: go run ./cmd/dailyjob
 
       - name: Commit state.json

@@ -16,13 +16,14 @@ type (
 
 	// Pipeline описывает параметры главного пайплайна (см. docs/architecture.md).
 	Pipeline struct {
-		MaxArticlesPerCategory int      `yaml:"max_articles_per_category"`
-		Categories             []string `yaml:"categories"`
-		RecencyMaxHours        int      `yaml:"recency_max_hours"`
-		MinContentLength       int      `yaml:"min_content_length"`
-		MaxTotalMessages       int      `yaml:"max_total_messages"`
-		AutoSubscribe          bool     `yaml:"auto_subscribe"`
-		ForceDispatchEnv       string   `yaml:"force_dispatch_env"`
+		MaxArticlesPerCategory  int      `yaml:"max_articles_per_category"`
+		Categories              []string `yaml:"categories"`
+		RecencyMaxHours         int      `yaml:"recency_max_hours"`
+		MinContentLength        int      `yaml:"min_content_length"`
+		MaxTotalMessages        int      `yaml:"max_total_messages"`
+		MaxArticlesBeforeGemini int      `yaml:"max_articles_before_gemini"` // Лимит статей перед отправкой в Gemini (для оптимизации RPD)
+		AutoSubscribe           bool     `yaml:"auto_subscribe"`
+		ForceDispatchEnv        string   `yaml:"force_dispatch_env"`
 	}
 
 	// Gemini содержит настройки моделей и размеров батчей.
