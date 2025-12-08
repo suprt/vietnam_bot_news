@@ -1,0 +1,117 @@
+sites:
+  - id: "datviet"
+    name: "Dat Viet"
+    url: "https://datviet.com"
+    rss_feeds:
+      - "https://datviet.com/feed"
+    priority: 1
+
+  - id: "plo"
+    name: "Báo Pháp Luật (PLO)"
+    url: "https://plo.vn"
+    rss_feeds:
+      - "https://plo.vn/rss/home.rss"
+    priority: 1
+
+  - id: "thanhnien"
+    name: "Thanh Niên"
+    url: "https://thanhnien.vn"
+    rss_feeds:
+      # Главная лента
+      - "https://thanhnien.vn/rss/home.rss"
+      # Политика
+      - "https://thanhnien.vn/rss/chinh-tri.rss"
+      # Экономика
+      - "https://thanhnien.vn/rss/kinh-te.rss"
+      # Общество
+      - "https://thanhnien.vn/rss/thoi-su.rss"
+      - "https://thanhnien.vn/rss/doi-song.rss"
+      # Право
+      - "https://thanhnien.vn/rss/thoi-su/phap-luat.rss"
+      # Технологии
+      - "https://thanhnien.vn/rss/cong-nghe.rss"
+      # Спорт
+      - "https://thanhnien.vn/rss/the-thao.rss"
+      # Здоровье
+      - "https://thanhnien.vn/rss/suc-khoe.rss"
+      # Мир
+      - "https://thanhnien.vn/rss/the-gioi.rss"
+      # Культура
+      - "https://thanhnien.vn/rss/van-hoa.rss"
+      - "https://thanhnien.vn/rss/giai-tri.rss"
+    priority: 1
+
+  - id: "vietbao"
+    name: "Việt Báo"
+    url: "https://vietbao.vn"
+    rss_feeds:
+      # Главная лента
+      - "https://vietbao.vn/rss/trang-chu"
+      # Политика / Мир
+      - "https://vietbao.vn/rss/doi-ngoai"
+      # Общество
+      - "https://vietbao.vn/rss/xa-hoi"
+      - "https://vietbao.vn/rss/xa-hoi/phap-luat"
+      # Экономика
+      - "https://vietbao.vn/rss/kinh-doanh"
+      # Спорт
+      - "https://vietbao.vn/rss/the-thao"
+      # Культура
+      - "https://vietbao.vn/rss/van-hoa-giai-tri"
+      # Технологии
+      - "https://vietbao.vn/rss/xe-cong-nghe"
+      # Здоровье
+      - "https://vietbao.vn/rss/suc-khoe"
+    priority: 1
+
+  - id: "vietnamplus"
+    name: "VietnamPlus"
+    url: "https://www.vietnamplus.vn"
+    rss_feeds:
+      # Главная лента
+      - "https://www.vietnamplus.vn/rss/home.rss"
+      # Политика
+      - "https://www.vietnamplus.vn/rss/chinhtri-291.rss"
+      # Экономика
+      - "https://www.vietnamplus.vn/rss/kinhte-311.rss"
+      # Общество
+      - "https://www.vietnamplus.vn/rss/xahoi-314.rss"
+      - "https://www.vietnamplus.vn/rss/xahoi/phapluat-327.rss"
+      # Технологии
+      - "https://www.vietnamplus.vn/rss/congnghe-212.rss"
+      - "https://www.vietnamplus.vn/rss/khoahoc-213.rss"
+      # Спорт
+      - "https://www.vietnamplus.vn/rss/thethao-214.rss"
+      # Здоровье
+      - "https://www.vietnamplus.vn/rss/doisong/suckhoe-367.rss"
+      # Мир
+      - "https://www.vietnamplus.vn/rss/thegioi-209.rss"
+      # Культура
+      - "https://www.vietnamplus.vn/rss/vanhoa-215.rss"
+    priority: 1
+
+  - id: "vnexpress"
+    name: "VnExpress"
+    url: "https://vnexpress.net"
+    rss_feeds:
+      # Главная лента
+      - "https://vnexpress.net/rss"
+      # Политика
+      - "https://vnexpress.net/rss/thoi-su.rss"
+      # Экономика
+      - "https://vnexpress.net/rss/kinh-doanh.rss"
+      # Общество
+      - "https://vnexpress.net/rss/gia-dinh.rss"
+      # Право
+      - "https://vnexpress.net/rss/phap-luat.rss"
+      # Технологии
+      - "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"
+      # Спорт
+      - "https://vnexpress.net/rss/the-thao.rss"
+      # Здоровье
+      - "https://vnexpress.net/rss/suc-khoe.rss"
+      # Мир
+      - "https://vnexpress.net/rss/the-gioi.rss"
+      # Культура
+      - "https://vnexpress.net/rss/giai-tri.rss"
+    priority: 1

@@ -1,0 +1,66 @@
+name: Daily News Digest
+
+on:
+  # Ежедневный запуск в 01:00 UTC (08:00 по Вьетнаму UTC+7)
+  schedule:
+    - cron: '0 1 * * *'
+  
+  # Ручной запуск из интерфейса GitHub
+  workflow_dispatch:
+    inputs:
+      force_dispatch:
+        description: 'Force dispatch even if no new news (set to 1 to enable)'
+        required: false
+        default: '0'
+        type: string
+
+jobs:
+  run-daily-digest:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Нужны права на запись для коммита state.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run daily job
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          FORCE_DISPATCH: ${{ github.event.inputs.force_dispatch || '0' }}
+        run: go run ./cmd/dailyjob
+
+      - name: Commit state.json
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Проверяем, есть ли изменения в state.json
+          if git diff --quiet state/state.json; then
+            echo "No changes in state.json, skipping commit"
+          else
+            git add state/state.json
+            git commit -m "chore: update state [skip ci]"
+            git push
+          fi
+
+      - name: Report failure
+        if: failure()
+        run: |
+          echo "Pipeline failed. Check logs above for details."
+          # TODO: Можно добавить отправку уведомления в Telegram при ошибке
+

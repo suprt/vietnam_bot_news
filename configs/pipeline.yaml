@@ -1,0 +1,28 @@
+pipeline:
+  max_articles_per_category: 5
+  categories:
+    - "Политика"
+    - "Экономика и бизнес"
+    - "Общество"
+    - "Право и безопасность"
+    - "Технологии и наука"
+    - "Культура и развлечения"
+    - "Спорт"
+    - "Здоровье и образ жизни"
+    - "Мир (международные новости)"
+    - "Другое / Разное"
+  recency_max_hours: 48
+  min_content_length: 300
+  max_total_messages: 5
+  auto_subscribe: true
+  force_dispatch_env: "FORCE_DISPATCH"
+
+gemini:
+  model_categorization: "models/gemini-2.5-flash"
+  model_summary: "models/gemini-2.5-flash"
+  model_ranking: "models/gemini-2.5-flash"
+  batch_size_categorization: 15
+  batch_size_summary: 5
+  batch_size_ranking: 10
+
+
