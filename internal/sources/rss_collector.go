@@ -214,8 +214,15 @@ func parseRSSFeed(data []byte) ([]rssItem, error) {
 	data = fixXMLEntities(data)
 
 	var feed rssFeed
+	// Сначала пытаемся стандартный парсер
 	if err := xml.Unmarshal(data, &feed); err != nil {
-		return nil, err
+		// Если не получилось, используем более толерантный декодер
+		// decoder.Strict = false позволяет обрабатывать некоторые синтаксические ошибки
+		decoder := xml.NewDecoder(bytes.NewReader(data))
+		decoder.Strict = false
+		if err := decoder.Decode(&feed); err != nil {
+			return nil, fmt.Errorf("parse RSS XML: %w", err)
+		}
 	}
 	return feed.Channel.Items, nil
 }

@@ -94,8 +94,6 @@ sites:
     name: "VnExpress"
     url: "https://vnexpress.net"
     rss_feeds:
-      # Главная лента
-      - "https://vnexpress.net/rss"
       # Политика
       - "https://vnexpress.net/rss/thoi-su.rss"
       # Экономика
