@@ -221,7 +221,12 @@ type rssItem struct {
 }
 
 func parseRSSFeed(data []byte) ([]rssItem, error) {
-	// Предварительная обработка: исправляем распространённые проблемы с XML
+	// Предварительная обработка: удаляем недопустимые управляющие символы из XML
+	// XML не допускает символы 0x00-0x1F, кроме 0x09 (TAB), 0x0A (LF), 0x0D (CR)
+	// Заменяем их на пробелы, чтобы не сломать структуру XML
+	data = removeInvalidXMLControlChars(data)
+	
+	// Исправляем распространённые проблемы с XML-сущностями
 	// Некоторые RSS-ленты содержат некорректные XML-сущности (например, & без ;)
 	data = fixXMLEntities(data)
 	
@@ -236,6 +241,22 @@ func parseRSSFeed(data []byte) ([]rssItem, error) {
 		}
 	}
 	return feed.Channel.Items, nil
+}
+
+// removeInvalidXMLControlChars удаляет недопустимые управляющие символы из XML.
+// XML не допускает символы 0x00-0x1F, кроме 0x09 (TAB), 0x0A (LF), 0x0D (CR).
+// Заменяем их на пробелы, чтобы не сломать структуру XML.
+func removeInvalidXMLControlChars(data []byte) []byte {
+	result := make([]byte, 0, len(data))
+	for _, b := range data {
+		// Если это недопустимый управляющий символ (0x00-0x1F, кроме TAB, LF, CR), заменяем на пробел
+		if b <= 0x1F && b != 0x09 && b != 0x0A && b != 0x0D {
+			result = append(result, 0x20) // Заменяем на пробел
+		} else {
+			result = append(result, b)
+		}
+	}
+	return result
 }
 
 
