@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/maine/vietnam_bot_news/internal/news"
@@ -134,35 +135,47 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		}
 	}
 
+	log.Println("Step 1: Collecting articles from RSS feeds...")
 	rawArticles, err := p.collector.Collect(ctx)
 	if err != nil {
 		return fmt.Errorf("collect articles: %w", err)
 	}
+	log.Printf("Collected %d raw articles", len(rawArticles))
 
+	log.Println("Step 2: Filtering articles...")
 	filtered, err := p.filter.Apply(ctx, rawArticles, state)
 	if err != nil {
 		return fmt.Errorf("filter articles: %w", err)
 	}
+	log.Printf("After filtering: %d articles", len(filtered))
 
+	log.Println("Step 3: Categorizing articles with Gemini...")
 	categorized, err := p.categorizer.Categorize(ctx, filtered)
 	if err != nil {
 		return fmt.Errorf("categorize articles: %w", err)
 	}
+	log.Printf("Categorized %d articles", len(categorized))
 
+	log.Println("Step 4: Ranking articles with Gemini...")
 	ranked, err := p.ranker.Rank(ctx, categorized)
 	if err != nil {
 		return fmt.Errorf("rank articles: %w", err)
 	}
+	log.Printf("Ranked: %d articles selected", len(ranked))
 
+	log.Println("Step 5: Summarizing articles with Gemini...")
 	digestEntries, err := p.summarizer.Summarize(ctx, ranked)
 	if err != nil {
 		return fmt.Errorf("summarize articles: %w", err)
 	}
+	log.Printf("Summarized %d articles", len(digestEntries))
 
+	log.Println("Step 6: Formatting messages...")
 	messages, err := p.formatter.BuildMessages(digestEntries)
 	if err != nil {
 		return fmt.Errorf("build messages: %w", err)
 	}
+	log.Printf("Formatted %d messages", len(messages))
 
 	if len(messages) > 0 {
 		if len(recipients) == 0 && !p.forceDispatch {

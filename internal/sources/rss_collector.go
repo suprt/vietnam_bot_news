@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
@@ -84,6 +85,12 @@ func (c *RSSCollector) fetchFeed(ctx context.Context, site config.Site, rssURL s
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
+
+	// Добавляем User-Agent, чтобы избежать блокировки (403 Forbidden)
+	// Многие сайты блокируют запросы без User-Agent
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; RSSBot/1.0; +https://github.com/maine/vietnam_bot_news)")
+	req.Header.Set("Accept", "application/rss+xml, application/xml, text/xml, */*")
+	req.Header.Set("Accept-Language", "vi,en;q=0.9")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -205,9 +212,34 @@ type rssItem struct {
 }
 
 func parseRSSFeed(data []byte) ([]rssItem, error) {
+	// Предварительная обработка: исправляем распространённые проблемы с XML
+	// Некоторые RSS-ленты содержат некорректные XML-сущности (например, & без ;)
+	data = fixXMLEntities(data)
+	
 	var feed rssFeed
+	// Сначала пытаемся стандартный парсер
 	if err := xml.Unmarshal(data, &feed); err != nil {
-		return nil, err
+		// Если не получилось, используем более толерантный декодер
+		decoder := xml.NewDecoder(bytes.NewReader(data))
+		decoder.Strict = false
+		if err := decoder.Decode(&feed); err != nil {
+			return nil, fmt.Errorf("parse RSS XML: %w", err)
+		}
 	}
 	return feed.Channel.Items, nil
+}
+
+// fixXMLEntities исправляет распространённые проблемы с XML-сущностями в RSS-лентах.
+// Некоторые сайты используют & вместо &amp; в тексте.
+func fixXMLEntities(data []byte) []byte {
+	// Заменяем & на &amp; только если это не валидная XML-сущность
+	// Это простая эвристика, но помогает в большинстве случаев
+	result := bytes.ReplaceAll(data, []byte("& "), []byte("&amp; "))
+	result = bytes.ReplaceAll(result, []byte("&,"), []byte("&amp;,"))
+	result = bytes.ReplaceAll(result, []byte("&."), []byte("&amp;."))
+	result = bytes.ReplaceAll(result, []byte("&;"), []byte("&amp;;"))
+	
+	// Исправляем случаи, когда & стоит в конце строки или перед пробелом без сущности
+	// Это более сложная логика, но для MVP достаточно простых замен
+	return result
 }
