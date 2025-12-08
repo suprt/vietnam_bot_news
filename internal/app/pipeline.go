@@ -68,36 +68,38 @@ type StateStore interface {
 
 // PipelineDeps перечисляет зависимости пайплайна.
 type PipelineDeps struct {
-	Collector     SourceCollector
-	Filter        Filter
-	Categorizer   Categorizer
-	Ranker        Ranker
-	Summarizer    Summarizer
-	Formatter     Formatter
-	Sender        Sender
-	Recipients    RecipientResolver
-	StateStore    StateStore
-	Clock         Clock
-	ForceDispatch bool
-	SkipGemini    bool
-	Config        config.Pipeline
+	Collector       SourceCollector
+	Filter          Filter
+	Categorizer     Categorizer
+	Ranker          Ranker
+	Summarizer      Summarizer
+	Formatter       Formatter
+	Sender          Sender
+	Recipients      RecipientResolver
+	StateStore      StateStore
+	Clock           Clock
+	ForceDispatch   bool
+	SkipGemini      bool
+	SendTestMessage bool
+	Config          config.Pipeline
 }
 
 // Pipeline инкапсулирует ежедневный процесс.
 type Pipeline struct {
-	collector     SourceCollector
-	filter        Filter
-	categorizer   Categorizer
-	ranker        Ranker
-	summarizer    Summarizer
-	formatter     Formatter
-	sender        Sender
-	recipients    RecipientResolver
-	stateStore    StateStore
-	clock         Clock
-	forceDispatch bool
-	skipGemini    bool
-	cfg           config.Pipeline
+	collector       SourceCollector
+	filter          Filter
+	categorizer     Categorizer
+	ranker          Ranker
+	summarizer      Summarizer
+	formatter       Formatter
+	sender          Sender
+	recipients      RecipientResolver
+	stateStore      StateStore
+	clock           Clock
+	forceDispatch   bool
+	skipGemini      bool
+	sendTestMessage bool
+	cfg             config.Pipeline
 }
 
 // NewPipeline создаёт новый экземпляр пайплайна.
@@ -108,19 +110,20 @@ func NewPipeline(deps PipelineDeps) *Pipeline {
 	}
 
 	return &Pipeline{
-		collector:     deps.Collector,
-		filter:        deps.Filter,
-		categorizer:   deps.Categorizer,
-		ranker:        deps.Ranker,
-		summarizer:    deps.Summarizer,
-		formatter:     deps.Formatter,
-		sender:        deps.Sender,
-		recipients:    deps.Recipients,
-		stateStore:    deps.StateStore,
-		clock:         clock,
-		forceDispatch: deps.ForceDispatch,
-		skipGemini:    deps.SkipGemini,
-		cfg:           deps.Config,
+		collector:       deps.Collector,
+		filter:          deps.Filter,
+		categorizer:     deps.Categorizer,
+		ranker:          deps.Ranker,
+		summarizer:      deps.Summarizer,
+		formatter:       deps.Formatter,
+		sender:          deps.Sender,
+		recipients:      deps.Recipients,
+		stateStore:      deps.StateStore,
+		clock:           clock,
+		forceDispatch:   deps.ForceDispatch,
+		skipGemini:      deps.SkipGemini,
+		sendTestMessage: deps.SendTestMessage,
+		cfg:             deps.Config,
 	}
 }
 
@@ -141,6 +144,22 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("resolve recipients: %w", err)
 		}
+	}
+
+	// Если установлен флаг отправки только тестового сообщения
+	if p.sendTestMessage {
+		log.Println("SEND_TEST_MESSAGE=1: Sending test message only (skipping all processing)")
+		if len(recipients) > 0 && p.sender != nil {
+			testMessage := "🧪 *Тестовое сообщение*\n\nЭто тестовое сообщение для проверки отправки в Telegram. Полный дайджест будет отправляться автоматически раз в день после обработки новостей через Gemini."
+			log.Printf("Sending test message to %d recipient(s)...", len(recipients))
+			if err := p.sender.Send(ctx, recipients, []string{testMessage}); err != nil {
+				return fmt.Errorf("send test message: %w", err)
+			}
+			log.Println("Test message sent successfully")
+		} else if len(recipients) == 0 {
+			return fmt.Errorf("no recipients registered; ask users to contact the bot")
+		}
+		return nil
 	}
 
 	log.Println("Step 1: Collecting articles from RSS feeds...")
@@ -187,6 +206,23 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		oldest := filtered[len(filtered)-1].PublishedAt
 		newest := filtered[0].PublishedAt
 		log.Printf("Date range: %s (oldest) to %s (newest)", oldest.Format("2006-01-02 15:04"), newest.Format("2006-01-02 15:04"))
+
+		// Детальный список отобранных статей для отправки в Gemini
+		log.Println("=== Selected Articles for Gemini Processing ===")
+		for i, article := range filtered {
+			// Ограничиваем длину заголовка для читаемости логов
+			title := article.Title
+			if len(title) > 80 {
+				title = title[:80] + "..."
+			}
+			log.Printf("%3d. [%s] %s | %s | %s",
+				i+1,
+				article.Source,
+				article.PublishedAt.Format("2006-01-02 15:04"),
+				title,
+				article.URL)
+		}
+		log.Println("=== End of Selected Articles ===")
 	}
 
 	// Если пропускаем Gemini, отправляем тестовое сообщение для проверки отправки

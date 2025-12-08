@@ -78,19 +78,20 @@ func main() {
 
 	// Создаём пайплайн
 	p := app.NewPipeline(app.PipelineDeps{
-		Collector:     collector,
-		Filter:        f,
-		Categorizer:   categorizer,
-		Ranker:        ranker,
-		Summarizer:    summarizer,
-		Formatter:     msgFormatter,
-		Sender:        sender,
-		Recipients:    recipientResolver,
-		StateStore:    stateStore,
-		Clock:         nil, // используем time.Now по умолчанию
-		ForceDispatch: envCfg.ForceDispatch,
-		SkipGemini:    envCfg.SkipGemini,
-		Config:        rootCfg.Pipeline,
+		Collector:       collector,
+		Filter:          f,
+		Categorizer:     categorizer,
+		Ranker:          ranker,
+		Summarizer:      summarizer,
+		Formatter:       msgFormatter,
+		Sender:          sender,
+		Recipients:      recipientResolver,
+		StateStore:      stateStore,
+		Clock:           nil, // используем time.Now по умолчанию
+		ForceDispatch:   envCfg.ForceDispatch,
+		SkipGemini:      envCfg.SkipGemini,
+		SendTestMessage: envCfg.SendTestMessage,
+		Config:          rootCfg.Pipeline,
 	})
 
 	if err := p.Run(ctx); err != nil {
