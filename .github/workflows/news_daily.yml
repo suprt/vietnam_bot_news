@@ -1,11 +1,8 @@
 name: Daily News Digest
 
 on:
-  # Ежедневный запуск в 01:00 UTC (08:00 по Вьетнаму UTC+7)
-  schedule:
-    - cron: '0 1 * * *'
-  
-  # Ручной запуск из интерфейса GitHub
+  # Запуск через внешний cron (cron-job.org) или вручную
+  # Встроенный schedule убран, чтобы избежать двойного запуска
   workflow_dispatch:
     inputs:
       force_dispatch:
