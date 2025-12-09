@@ -159,17 +159,28 @@ func buildArticleID(siteID, url string, published time.Time) string {
 func parseTime(value string, fallback time.Time) time.Time {
 	value = strings.TrimSpace(value)
 	if value == "" {
+		log.Printf("Warning: empty pubDate, using fallback time: %s", fallback.Format(time.RFC3339))
 		return fallback
 	}
 
 	formats := []string{
-		time.RFC1123Z,
-		time.RFC1123,
-		time.RFC822Z,
-		time.RFC822,
-		time.RFC3339,
+		time.RFC1123Z,    // "Mon, 02 Jan 2006 15:04:05 -0700"
+		time.RFC1123,     // "Mon, 02 Jan 2006 15:04:05 MST"
+		time.RFC822Z,     // "02 Jan 06 15:04 -0700"
+		time.RFC822,      // "02 Jan 06 15:04 MST"
+		time.RFC3339,     // "2006-01-02T15:04:05Z07:00"
+		time.RFC3339Nano, // "2006-01-02T15:04:05.999999999Z07:00"
 		"Mon, 02 Jan 2006 15:04:05 MST",
 		"02 Jan 2006 15:04:05 MST",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04:05Z",
+		"2006-01-02T15:04:05+07:00",
+		"2006-01-02T15:04:05-07:00",
+		"Mon, 2 Jan 2006 15:04:05 MST", // без ведущего нуля в дне
+		"2 Jan 2006 15:04:05 MST",
+		"Mon, 02 Jan 2006 15:04:05 +0700", // пробел перед часовым поясом
+		"Mon, 02 Jan 2006 15:04:05 +07:00",
 	}
 
 	for _, f := range formats {
@@ -178,6 +189,8 @@ func parseTime(value string, fallback time.Time) time.Time {
 		}
 	}
 
+	// Если не удалось распарсить, логируем и используем fallback
+	log.Printf("Warning: failed to parse pubDate '%s', using fallback time: %s", value, fallback.Format(time.RFC3339))
 	return fallback
 }
 
