@@ -17,7 +17,10 @@ func TestRSSCollector_getRSSFeeds(t *testing.T) {
 		{
 			name: "new format with rss_feeds",
 			site: config.Site{
-				RSSFeeds: []string{"https://example.com/rss1", "https://example.com/rss2"},
+				RSSFeeds: []config.RSSFeed{
+					{URL: "https://example.com/rss1", Category: "Экономика и бизнес"},
+					{URL: "https://example.com/rss2", Category: "Общество"},
+				},
 			},
 			want: 2,
 		},
@@ -31,8 +34,10 @@ func TestRSSCollector_getRSSFeeds(t *testing.T) {
 		{
 			name: "priority to rss_feeds",
 			site: config.Site{
-				RSS:      "https://example.com/old",
-				RSSFeeds: []string{"https://example.com/new"},
+				RSS: "https://example.com/old",
+				RSSFeeds: []config.RSSFeed{
+					{URL: "https://example.com/new", Category: "Общество"},
+				},
 			},
 			want: 1,
 		},
@@ -168,8 +173,8 @@ func TestRSSCollector_selectContent(t *testing.T) {
 			expected: "Title",
 		},
 		{
-			name: "empty item returns empty title",
-			item: rssItem{},
+			name:     "empty item returns empty title",
+			item:     rssItem{},
 			expected: "",
 		},
 	}
@@ -262,4 +267,3 @@ func TestRSSCollector_detectLanguage(t *testing.T) {
 		t.Errorf("detectLanguage() = %q, want %q", lang, "vi")
 	}
 }
-

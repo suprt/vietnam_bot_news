@@ -11,7 +11,8 @@ sites:
     name: "Báo Pháp Luật (PLO)"
     url: "https://plo.vn"
     rss_feeds:
-      - "https://plo.vn/rss/home.rss"
+      - url: "https://plo.vn/rss/home.rss"
+        category: ""  # Главная лента, используем Gemini
     priority: 1
 
   - id: "thanhnien"
@@ -19,20 +20,28 @@ sites:
     url: "https://thanhnien.vn"
     rss_feeds:
       # Главная лента
-      - "https://thanhnien.vn/rss/home.rss"
+      - url: "https://thanhnien.vn/rss/home.rss"
+        category: ""  # Главная лента, используем Gemini
       # Экономика
-      - "https://thanhnien.vn/rss/kinh-te.rss"
+      - url: "https://thanhnien.vn/rss/kinh-te.rss"
+        category: "Экономика и бизнес"
       # Общество
-      - "https://thanhnien.vn/rss/thoi-su.rss"
-      - "https://thanhnien.vn/rss/doi-song.rss"
+      - url: "https://thanhnien.vn/rss/thoi-su.rss"
+        category: "Общество"
+      - url: "https://thanhnien.vn/rss/doi-song.rss"
+        category: "Общество"
       # Право
-      - "https://thanhnien.vn/rss/thoi-su/phap-luat.rss"
+      - url: "https://thanhnien.vn/rss/thoi-su/phap-luat.rss"
+        category: "Право и безопасность"
       # Технологии
-      - "https://thanhnien.vn/rss/cong-nghe.rss"
+      - url: "https://thanhnien.vn/rss/cong-nghe.rss"
+        category: "Технологии и наука"
       # Здоровье
-      - "https://thanhnien.vn/rss/suc-khoe.rss"
+      - url: "https://thanhnien.vn/rss/suc-khoe.rss"
+        category: "Здоровье и образ жизни"
       # Путешествия
-      - "https://thanhnien.vn/rss/du-lich.rss"
+      - url: "https://thanhnien.vn/rss/du-lich.rss"
+        category: ""  # Путешествия нет в списке категорий, используем Gemini
     priority: 1
 
   # Временно отключено из-за Cloudflare 403 ошибок
@@ -64,18 +73,25 @@ sites:
     url: "https://www.vietnamplus.vn"
     rss_feeds:
       # Главная лента
-      - "https://www.vietnamplus.vn/rss/home.rss"
+      - url: "https://www.vietnamplus.vn/rss/home.rss"
+        category: ""  # Главная лента, используем Gemini
       # Экономика
-      - "https://www.vietnamplus.vn/rss/kinhte-311.rss"
+      - url: "https://www.vietnamplus.vn/rss/kinhte-311.rss"
+        category: "Экономика и бизнес"
       # Общество
-      - "https://www.vietnamplus.vn/rss/xahoi-314.rss"
-      - "https://www.vietnamplus.vn/rss/xahoi/phapluat-327.rss"
+      - url: "https://www.vietnamplus.vn/rss/xahoi-314.rss"
+        category: "Общество"
+      - url: "https://www.vietnamplus.vn/rss/xahoi/phapluat-327.rss"
+        category: "Право и безопасность"
       # Технологии
-      - "https://www.vietnamplus.vn/rss/congnghe-212.rss"
+      - url: "https://www.vietnamplus.vn/rss/congnghe-212.rss"
+        category: "Технологии и наука"
       # Наука
-      - "https://www.vietnamplus.vn/rss/khoahoc-213.rss"
+      - url: "https://www.vietnamplus.vn/rss/khoahoc-213.rss"
+        category: "Технологии и наука"
       # Здоровье
-      - "https://www.vietnamplus.vn/rss/doisong/suckhoe-367.rss"
+      - url: "https://www.vietnamplus.vn/rss/doisong/suckhoe-367.rss"
+        category: "Здоровье и образ жизни"
     priority: 1
 
   - id: "vnexpress"
@@ -83,19 +99,27 @@ sites:
     url: "https://vnexpress.net"
     rss_feeds:
       # Экономика
-      - "https://vnexpress.net/rss/kinh-doanh.rss"
+      - url: "https://vnexpress.net/rss/kinh-doanh.rss"
+        category: "Экономика и бизнес"
       # Общество
-      - "https://vnexpress.net/rss/gia-dinh.rss"
+      - url: "https://vnexpress.net/rss/gia-dinh.rss"
+        category: "Общество"
       # Право
-      - "https://vnexpress.net/rss/phap-luat.rss"
+      - url: "https://vnexpress.net/rss/phap-luat.rss"
+        category: "Право и безопасность"
       # Технологии
-      - "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"
+      - url: "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"
+        category: "Технологии и наука"
       # Здоровье
-      - "https://vnexpress.net/rss/suc-khoe.rss"
+      - url: "https://vnexpress.net/rss/suc-khoe.rss"
+        category: "Здоровье и образ жизни"
       # Туризм
-      - "https://vnexpress.net/rss/du-lich.rss"
+      - url: "https://vnexpress.net/rss/du-lich.rss"
+        category: ""  # Туризм нет в списке категорий, используем Gemini
       # Самые просматриваемые
-      - "https://vnexpress.net/rss/tin-xem-nhieu.rss"
+      - url: "https://vnexpress.net/rss/tin-xem-nhieu.rss"
+        category: ""  # Смешанная лента, используем Gemini
       # Избранные
-      - "https://vnexpress.net/rss/tin-noi-bat.rss"
+      - url: "https://vnexpress.net/rss/tin-noi-bat.rss"
+        category: ""  # Смешанная лента, используем Gemini
     priority: 1

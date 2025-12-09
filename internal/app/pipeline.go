@@ -239,12 +239,28 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	}
 	log.Printf("Categorized %d articles", len(categorized))
 
+	// Задержка 1 минута между этапами для сброса TPM лимита
+	log.Println("Waiting 1 minute before ranking (TPM limit reset)...")
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(1 * time.Minute):
+	}
+
 	log.Println("Step 4: Ranking articles with Gemini...")
 	ranked, err := p.ranker.Rank(ctx, categorized)
 	if err != nil {
 		return fmt.Errorf("rank articles: %w", err)
 	}
 	log.Printf("Ranked: %d articles selected", len(ranked))
+
+	// Задержка 1 минута между этапами для сброса TPM лимита
+	log.Println("Waiting 1 minute before summarization (TPM limit reset)...")
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(1 * time.Minute):
+	}
 
 	log.Println("Step 5: Summarizing articles with Gemini...")
 	digestEntries, err := p.summarizer.Summarize(ctx, ranked)

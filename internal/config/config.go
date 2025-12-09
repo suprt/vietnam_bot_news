@@ -43,15 +43,41 @@ type (
 
 	// Site соответствует одной записи из docs/sites.md.
 	Site struct {
-		ID        string   `yaml:"id"`
-		Name      string   `yaml:"name"`
-		URL       string   `yaml:"url"`
-		RSS       string   `yaml:"rss,omitempty"`       // Обратная совместимость: одна RSS-лента
-		RSSFeeds  []string `yaml:"rss_feeds,omitempty"` // Новый формат: массив RSS-лент (по категориям)
-		Priority  int      `yaml:"priority"`
+		ID        string     `yaml:"id"`
+		Name      string     `yaml:"name"`
+		URL       string     `yaml:"url"`
+		RSS       string     `yaml:"rss,omitempty"`       // Обратная совместимость: одна RSS-лента
+		RSSFeeds  []RSSFeed  `yaml:"rss_feeds,omitempty"` // Новый формат: массив RSS-лент с категориями
+		Priority  int        `yaml:"priority"`
 	}
 
+	// RSSFeed описывает одну RSS-ленту с опциональной категорией.
+	// Если category пустая - используется Gemini для категоризации.
+	RSSFeed struct {
+		URL      string `yaml:"url"`
+		Category string `yaml:"category,omitempty"` // Категория из списка pipeline.categories, пустая = использовать Gemini
+	}
 )
+
+// UnmarshalYAML поддерживает оба формата: строку (старый формат) и объект (новый формат).
+func (r *RSSFeed) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// Пытаемся распарсить как строку (старый формат)
+	var urlStr string
+	if err := unmarshal(&urlStr); err == nil {
+		r.URL = urlStr
+		r.Category = "" // Старый формат - категория не указана, используем Gemini
+		return nil
+	}
+
+	// Пытаемся распарсить как объект (новый формат)
+	type RSSFeedAlias RSSFeed
+	var alias RSSFeedAlias
+	if err := unmarshal(&alias); err != nil {
+		return err
+	}
+	*r = RSSFeed(alias)
+	return nil
+}
 
 // LoadRoot читает основной файл конфигурации.
 func LoadRoot(path string) (Root, error) {

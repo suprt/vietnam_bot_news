@@ -52,12 +52,12 @@ func (c *RSSCollector) Collect(ctx context.Context) ([]news.ArticleRaw, error) {
 		}
 
 		// Обрабатываем каждую RSS-ленту
-		for _, rssURL := range rssFeeds {
-			items, err := c.fetchFeed(ctx, site, rssURL)
+		for _, rssFeed := range rssFeeds {
+			items, err := c.fetchFeed(ctx, site, rssFeed)
 			if err != nil {
 				// При ошибке одной RSS-ленты продолжаем обработку других
 				// Это позволяет частично обработать сайт, даже если одна из RSS-лент недоступна
-				log.Printf("Error fetching RSS feed %s for site %s (%s): %v", rssURL, site.ID, site.Name, err)
+				log.Printf("Error fetching RSS feed %s for site %s (%s): %v", rssFeed.URL, site.ID, site.Name, err)
 				continue
 			}
 
@@ -68,21 +68,23 @@ func (c *RSSCollector) Collect(ctx context.Context) ([]news.ArticleRaw, error) {
 }
 
 // getRSSFeeds возвращает список RSS-лент для сайта.
-// Поддерживает оба формата: старый (одна RSS) и новый (массив RSS).
-func (c *RSSCollector) getRSSFeeds(site config.Site) []string {
+// Поддерживает оба формата: старый (одна RSS) и новый (массив RSS с категориями).
+func (c *RSSCollector) getRSSFeeds(site config.Site) []config.RSSFeed {
 	// Приоритет: новый формат (rss_feeds)
 	if len(site.RSSFeeds) > 0 {
 		return site.RSSFeeds
 	}
-	// Обратная совместимость: старая одна RSS-лента
+	// Обратная совместимость: старая одна RSS-лента (без категории, будет использован Gemini)
 	if strings.TrimSpace(site.RSS) != "" {
-		return []string{site.RSS}
+		return []config.RSSFeed{
+			{URL: site.RSS, Category: ""},
+		}
 	}
 	return nil
 }
 
-func (c *RSSCollector) fetchFeed(ctx context.Context, site config.Site, rssURL string) ([]news.ArticleRaw, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rssURL, nil)
+func (c *RSSCollector) fetchFeed(ctx context.Context, site config.Site, rssFeed config.RSSFeed) ([]news.ArticleRaw, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rssFeed.URL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
@@ -128,6 +130,16 @@ func (c *RSSCollector) fetchFeed(ctx context.Context, site config.Site, rssURL s
 		timestamp := parseTime(item.PubDate, c.clock())
 		content := strings.TrimSpace(selectContent(item))
 
+		metadata := map[string]string{
+			"rss_rank": strconv.Itoa(i),
+			"siteName": site.Name,
+		}
+		// Сохраняем категорию из RSS-ленты, если она указана
+		// Если категория пустая, categorizer будет использовать Gemini
+		if rssFeed.Category != "" {
+			metadata["rss_category"] = rssFeed.Category
+		}
+
 		articles = append(articles, news.ArticleRaw{
 			ID:          buildArticleID(site.ID, item.Link, timestamp),
 			Source:      site.ID,
@@ -136,10 +148,7 @@ func (c *RSSCollector) fetchFeed(ctx context.Context, site config.Site, rssURL s
 			PublishedAt: timestamp,
 			RawLanguage: detectLanguage(site),
 			RawContent:  content,
-			Metadata: map[string]string{
-				"rss_rank": strconv.Itoa(i),
-				"siteName": site.Name,
-			},
+			Metadata:    metadata,
 		})
 	}
 

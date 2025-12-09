@@ -41,19 +41,75 @@ func (c *Categorizer) Categorize(ctx context.Context, articles []news.ArticleRaw
 	}
 
 	var results []news.CategorizedArticle
+	var articlesForGemini []news.ArticleRaw
+
+	// Разделяем статьи: с категорией из RSS и без категории
+	for _, article := range articles {
+		if category, ok := article.Metadata["rss_category"]; ok && category != "" {
+			// Категория уже известна из RSS-ленты, используем её напрямую
+			if c.isValidCategory(category) {
+				results = append(results, news.CategorizedArticle{
+					Article:  article,
+					Category: category,
+				})
+			} else {
+				// Категория из RSS невалидна, отправляем в Gemini
+				log.Printf("Warning: invalid RSS category '%s' for article %s, sending to Gemini", category, article.ID)
+				articlesForGemini = append(articlesForGemini, article)
+			}
+		} else {
+			// Категории нет, отправляем в Gemini
+			articlesForGemini = append(articlesForGemini, article)
+		}
+	}
+
+	log.Printf("Categorization: %d articles from RSS categories, %d articles need Gemini", len(results), len(articlesForGemini))
+
+	// Обрабатываем статьи без категории через Gemini
+	if len(articlesForGemini) > 0 {
+		geminiResults, err := c.categorizeWithGemini(ctx, articlesForGemini)
+		if err != nil {
+			return nil, fmt.Errorf("categorize with Gemini: %w", err)
+		}
+		results = append(results, geminiResults...)
+	}
+
+	log.Printf("Categorization complete: %d total articles categorized", len(results))
+
+	// Логируем распределение по категориям
+	categoryCount := make(map[string]int)
+	for _, result := range results {
+		category := result.Category
+		if category == "" {
+			category = "Другое / Разное"
+		}
+		categoryCount[category]++
+	}
+	log.Println("=== Categorization Distribution ===")
+	for category, count := range categoryCount {
+		log.Printf("  - %s: %d articles", category, count)
+	}
+	log.Println("===================================")
+
+	return results, nil
+}
+
+// categorizeWithGemini отправляет статьи в Gemini для категоризации.
+func (c *Categorizer) categorizeWithGemini(ctx context.Context, articles []news.ArticleRaw) ([]news.CategorizedArticle, error) {
+	var results []news.CategorizedArticle
 
 	// Оптимизация: если статей меньше или равно batchSize, обрабатываем все за один запрос
 	effectiveBatchSize := c.batchSize
 	if len(articles) <= c.batchSize {
 		effectiveBatchSize = len(articles)
-		log.Printf("Categorizing all %d articles in 1 batch (optimization: articles <= batch size)", len(articles))
+		log.Printf("Categorizing all %d articles with Gemini in 1 batch (optimization: articles <= batch size)", len(articles))
 	} else {
 		totalBatches := (len(articles) + c.batchSize - 1) / c.batchSize
-		log.Printf("Categorizing %d articles in %d batches (batch size: %d)", len(articles), totalBatches, c.batchSize)
+		log.Printf("Categorizing %d articles with Gemini in %d batches (batch size: %d)", len(articles), totalBatches, c.batchSize)
 	}
 
-	// Минимальная задержка между запросами для соблюдения RPM=5 (12 секунд между запросами)
-	const minDelayBetweenRequests = 12 * time.Second
+	// Задержка 30 секунд между запросами категоризации для соблюдения TPM (не более 2 запросов в минуту)
+	const minDelayBetweenRequests = 30 * time.Second
 	lastRequestTime := time.Now()
 	requestCount := 0
 
@@ -63,11 +119,11 @@ func (c *Categorizer) Categorize(ctx context.Context, articles []news.ArticleRaw
 			end = len(articles)
 		}
 
-		// Соблюдаем задержку между запросами для соблюдения RPM лимита
+		// Соблюдаем задержку между запросами для соблюдения TPM лимита (30 секунд = 2 запроса в минуту)
 		elapsed := time.Since(lastRequestTime)
 		if elapsed < minDelayBetweenRequests && requestCount > 0 {
 			waitTime := minDelayBetweenRequests - elapsed
-			log.Printf("Waiting %v before next Gemini API request (RPM limit)...", waitTime)
+			log.Printf("Waiting %v before next Gemini categorization request (TPM limit: max 2 requests per minute)...", waitTime)
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -78,7 +134,7 @@ func (c *Categorizer) Categorize(ctx context.Context, articles []news.ArticleRaw
 		batch := articles[i:end]
 		requestCount++
 		totalBatches := (len(articles) + effectiveBatchSize - 1) / effectiveBatchSize
-		log.Printf("Processing categorization batch %d/%d (%d articles)...", requestCount, totalBatches, len(batch))
+		log.Printf("Processing Gemini categorization batch %d/%d (%d articles)...", requestCount, totalBatches, len(batch))
 
 		batchResults, err := c.categorizeBatch(ctx, batch)
 		if err != nil {
@@ -89,7 +145,7 @@ func (c *Categorizer) Categorize(ctx context.Context, articles []news.ArticleRaw
 		lastRequestTime = time.Now()
 	}
 
-	log.Printf("Categorization complete: %d articles categorized in %d API requests", len(results), requestCount)
+	log.Printf("Gemini categorization complete: %d articles categorized in %d API requests", len(results), requestCount)
 
 	return results, nil
 }

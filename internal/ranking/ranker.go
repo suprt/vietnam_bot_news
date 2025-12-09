@@ -60,9 +60,29 @@ func (r *Ranker) Rank(ctx context.Context, categorized []news.CategorizedArticle
 
 	var results []news.CategorizedArticle
 
+	// Минимальная задержка между запросами для соблюдения RPM=5 (12 секунд между запросами)
+	const minDelayBetweenRequests = 12 * time.Second
+	lastRequestTime := time.Now()
+	categoryCount := 0
+	totalCategories := len(byCategory)
+
 	// Обрабатываем каждую категорию отдельно
 	for category, articles := range byCategory {
-		// Оцениваем актуальность через Gemini
+		categoryCount++
+
+		// Соблюдаем задержку между запросами для соблюдения RPM лимита
+		elapsed := time.Since(lastRequestTime)
+		if elapsed < minDelayBetweenRequests && categoryCount > 1 {
+			waitTime := minDelayBetweenRequests - elapsed
+			log.Printf("Waiting %v before ranking category '%s' (RPM limit, %d/%d categories)...", waitTime, category, categoryCount, totalCategories)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(waitTime):
+			}
+		}
+
+		// Оцениваем актуальность через Gemini (все статьи категории одним запросом)
 		scored, err := r.rankCategory(ctx, category, articles)
 		if err != nil {
 			// Если ошибка при ранкинге, используем все статьи без сортировки (fallback)
@@ -80,69 +100,50 @@ func (r *Ranker) Rank(ctx context.Context, categorized []news.CategorizedArticle
 		}
 
 		results = append(results, scored...)
+		lastRequestTime = time.Now()
 	}
+
+	// Логируем распределение по категориям после ранкинга
+	finalCategoryCount := make(map[string]int)
+	for _, result := range results {
+		category := result.Category
+		if category == "" {
+			category = "Другое / Разное"
+		}
+		finalCategoryCount[category]++
+	}
+	log.Println("=== Ranking Distribution (after top-N selection) ===")
+	for category, count := range finalCategoryCount {
+		status := "OK"
+		if count < 3 {
+			status = "LOW"
+		}
+		log.Printf("  - %s: %d articles [%s]", category, count, status)
+	}
+	log.Println("===================================================")
 
 	return results, nil
 }
 
 // rankCategory оценивает актуальность новостей в категории через Gemini.
+// ВАЖНО: отправляет ВСЕ статьи категории одним запросом для консистентности оценок.
 func (r *Ranker) rankCategory(ctx context.Context, category string, articles []news.CategorizedArticle) ([]news.CategorizedArticle, error) {
 	if len(articles) == 0 {
 		return nil, nil
 	}
 
-	var allScored []news.CategorizedArticle
+	// Отправляем все статьи категории одним запросом для консистентного ранкинга
+	// Gemini должен видеть все статьи категории одновременно, чтобы правильно их сравнивать
+	log.Printf("Ranking all %d articles in category '%s' in 1 request (all articles sent together for consistent ranking)", len(articles), category)
 
-	// Оптимизация: если статей меньше или равно batchSize, обрабатываем все за один запрос
-	effectiveBatchSize := r.batchSize
-	if len(articles) <= r.batchSize {
-		effectiveBatchSize = len(articles)
-		log.Printf("Ranking all %d articles in category '%s' in 1 batch (optimization: articles <= batch size)", len(articles), category)
-	} else {
-		totalBatches := (len(articles) + r.batchSize - 1) / r.batchSize
-		log.Printf("Ranking %d articles in category '%s' in %d batches (batch size: %d)", len(articles), category, totalBatches, r.batchSize)
+	scored, err := r.rankBatch(ctx, category, articles)
+	if err != nil {
+		return nil, fmt.Errorf("rank category '%s': %w", category, err)
 	}
 
-	// Минимальная задержка между запросами для соблюдения RPM=5 (12 секунд между запросами)
-	const minDelayBetweenRequests = 12 * time.Second
-	lastRequestTime := time.Now()
-	requestCount := 0
+	log.Printf("Ranking complete for category '%s': %d articles scored", category, len(scored))
 
-	for i := 0; i < len(articles); i += effectiveBatchSize {
-		end := i + effectiveBatchSize
-		if end > len(articles) {
-			end = len(articles)
-		}
-
-		// Соблюдаем задержку между запросами
-		elapsed := time.Since(lastRequestTime)
-		if elapsed < minDelayBetweenRequests && requestCount > 0 {
-			waitTime := minDelayBetweenRequests - elapsed
-			log.Printf("Waiting %v before next Gemini API request (RPM limit)...", waitTime)
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(waitTime):
-			}
-		}
-
-		batch := articles[i:end]
-		requestCount++
-		totalBatches := (len(articles) + effectiveBatchSize - 1) / effectiveBatchSize
-		log.Printf("Processing ranking batch %d/%d for category '%s' (%d articles)...", requestCount, totalBatches, category, len(batch))
-
-		scored, err := r.rankBatch(ctx, category, batch)
-		if err != nil {
-			return nil, fmt.Errorf("rank batch [%d-%d]: %w", i, end-1, err)
-		}
-
-		allScored = append(allScored, scored...)
-		lastRequestTime = time.Now()
-	}
-
-	log.Printf("Ranking complete for category '%s': %d articles scored in %d API requests", category, len(allScored), requestCount)
-
-	return allScored, nil
+	return scored, nil
 }
 
 // rankBatch отправляет батч новостей в Gemini для оценки актуальности.
