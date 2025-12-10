@@ -9,7 +9,7 @@ pipeline:
     - "Другое / Разное"
   recency_max_hours: 24
   min_content_length: 300
-  max_total_messages: 5
+  max_total_messages: 6
   max_articles_before_gemini: 500  # Лимит статей перед отправкой в Gemini (оптимизация RPD=20)
   auto_subscribe: true
   force_dispatch_env: "FORCE_DISPATCH"

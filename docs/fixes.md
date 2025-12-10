@@ -1,0 +1,3 @@
+категоризацию через гемини для большей консинстентсности
+потом при ранкенге проверка на дубли статей с разных источников
+также покоректировать парсер, иногда проскакивает в заголовках такое Đ&agrave; Nẵng chi gần 9.000 tỉ đồng bồi thường cho si&ecirc;u dự &aacute;n đường sắt tốc độ cao (https://thanhnien.vn/da-nang-chi-gan-9000-ti-dong-boi-thuong-cho-sieu-du-an-duong-sat-toc-do-cao-18525120913214268.htm) 
