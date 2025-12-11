@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/maine/vietnam_bot_news/internal/config"
 	"github.com/maine/vietnam_bot_news/internal/news"
@@ -12,8 +13,8 @@ import (
 const (
 	// telegramMaxMessageLength - максимальная длина сообщения в Telegram (4096 символов)
 	telegramMaxMessageLength = 4096
-	// headerTemplate - шаблон для нумерации сообщений
-	headerTemplate = "Подборка дня (%d/%d)\n\n"
+	// headerTemplate - шаблон для нумерации сообщений с датой
+	headerTemplate = "Подборка дня (%d/%d) — %s\n\n"
 	// ellipsis - символы, добавляемые при обрезке сообщения
 	ellipsis = "..."
 )
@@ -109,8 +110,9 @@ func (f *Formatter) splitIntoMessagesByCategories(categoryBlocks []string) []str
 	var messages []string
 	currentMessage := strings.Builder{}
 
-	// Зарезервируем место для заголовка нумерации (примерно 30 символов)
-	const headerReserve = 30
+	// Зарезервируем место для заголовка нумерации с датой (примерно 50 символов)
+	// Пример: "Подборка дня (1/3) — 15 января 2025\n\n" ≈ 45-50 символов
+	const headerReserve = 50
 	// Разделитель между категориями
 	const categorySeparator = "\n\n"
 
@@ -191,9 +193,11 @@ func (f *Formatter) splitIntoMessagesByCategories(categoryBlocks []string) []str
 	// Добавляем нумерацию ко всем сообщениям, если их больше одного
 	if len(messages) > 1 {
 		total := len(messages)
+		// Форматируем сегодняшнюю дату
+		today := time.Now().Format("2 января 2006")
 		result := make([]string, 0, total)
 		for i, msg := range messages {
-			header := fmt.Sprintf(headerTemplate, i+1, total)
+			header := fmt.Sprintf(headerTemplate, i+1, total, today)
 			// Проверяем, что итоговое сообщение не превышает лимит с учётом заголовка
 			fullMessage := header + msg
 			if len(fullMessage) > telegramMaxMessageLength {
