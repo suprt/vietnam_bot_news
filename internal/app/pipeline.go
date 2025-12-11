@@ -64,6 +64,9 @@ type RecipientResolver interface {
 type StateStore interface {
 	Load(ctx context.Context) (news.State, error)
 	Save(ctx context.Context, state news.State) error
+	LoadDigest(ctx context.Context) (*news.Digest, error)
+	SaveDigest(ctx context.Context, digest *news.Digest) error
+	DeleteDigest(ctx context.Context) error
 }
 
 // PipelineDeps перечисляет зависимости пайплайна.
@@ -81,6 +84,8 @@ type PipelineDeps struct {
 	ForceDispatch   bool
 	SkipGemini      bool
 	SendTestMessage bool
+	BuildMode       bool // Если true - только формирует и сохраняет дайджест, не отправляет
+	SendMode        bool // Если true - только отправляет сохраненный дайджест
 	Config          config.Pipeline
 }
 
@@ -99,6 +104,8 @@ type Pipeline struct {
 	forceDispatch   bool
 	skipGemini      bool
 	sendTestMessage bool
+	buildMode       bool
+	sendMode        bool
 	cfg             config.Pipeline
 }
 
@@ -123,6 +130,8 @@ func NewPipeline(deps PipelineDeps) *Pipeline {
 		forceDispatch:   deps.ForceDispatch,
 		skipGemini:      deps.SkipGemini,
 		sendTestMessage: deps.SendTestMessage,
+		buildMode:       deps.BuildMode,
+		sendMode:        deps.SendMode,
 		cfg:             deps.Config,
 	}
 }
@@ -281,6 +290,90 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	}
 	log.Printf("Formatted %d messages", len(messages))
 
+	// Собираем ID статей для отслеживания отправленных
+	articleIDs := make([]string, 0, len(digestEntries))
+	for _, entry := range digestEntries {
+		articleIDs = append(articleIDs, entry.ID)
+	}
+
+	// Режим build: сохраняем дайджест и не отправляем
+	if p.buildMode {
+		digest := &news.Digest{
+			Messages:   messages,
+			CreatedAt:  p.clock(),
+			ArticleIDs: articleIDs,
+		}
+		if err := p.stateStore.SaveDigest(ctx, digest); err != nil {
+			return fmt.Errorf("save digest: %w", err)
+		}
+		log.Printf("Digest saved to state/digest.json (%d messages, %d articles)", len(messages), len(articleIDs))
+		return nil
+	}
+
+	// Режим send: отправляем сохраненный дайджест
+	if p.sendMode {
+		digest, err := p.stateStore.LoadDigest(ctx)
+		if err != nil {
+			return fmt.Errorf("load digest: %w", err)
+		}
+		if digest == nil {
+			log.Println("No saved digest found, running full pipeline to build and send digest...")
+			// Если дайджеста нет, запускаем полный пайплайн в обычном режиме
+			// Это fallback на случай, если build workflow не успел выполниться
+			// Создаем новый пайплайн без sendMode для избежания рекурсии
+			fallbackPipeline := &Pipeline{
+				collector:       p.collector,
+				filter:          p.filter,
+				categorizer:     p.categorizer,
+				ranker:          p.ranker,
+				summarizer:      p.summarizer,
+				formatter:       p.formatter,
+				sender:          p.sender,
+				recipients:      p.recipients,
+				stateStore:      p.stateStore,
+				clock:           p.clock,
+				forceDispatch:   p.forceDispatch,
+				skipGemini:      p.skipGemini,
+				sendTestMessage: p.sendTestMessage,
+				buildMode:       false,
+				sendMode:        false,
+				cfg:             p.cfg,
+			}
+			return fallbackPipeline.Run(ctx)
+		}
+
+		log.Printf("Loaded digest created at %s (%d messages, %d articles)",
+			digest.CreatedAt.Format("2006-01-02 15:04:05"), len(digest.Messages), len(digest.ArticleIDs))
+
+		if len(digest.Messages) > 0 {
+			if len(recipients) == 0 && !p.forceDispatch {
+				return fmt.Errorf("no recipients registered; ask users to contact the bot")
+			}
+			if len(recipients) > 0 {
+				if err := p.sender.Send(ctx, recipients, digest.Messages); err != nil {
+					return fmt.Errorf("send messages: %w", err)
+				}
+				log.Printf("Sent %d messages to %d recipient(s)", len(digest.Messages), len(recipients))
+			}
+		}
+
+		// Обновляем state с отправленными статьями
+		newState := p.updateStateFromDigest(state, digest)
+		if err := p.stateStore.Save(ctx, newState); err != nil {
+			return fmt.Errorf("save state: %w", err)
+		}
+
+		// Удаляем дайджест после успешной отправки
+		if err := p.stateStore.DeleteDigest(ctx); err != nil {
+			log.Printf("Warning: failed to delete digest file: %v", err)
+		} else {
+			log.Println("Digest file deleted after successful send")
+		}
+
+		return nil
+	}
+
+	// Обычный режим: отправляем сразу
 	if len(messages) > 0 {
 		if len(recipients) == 0 && !p.forceDispatch {
 			return fmt.Errorf("no recipients registered; ask users to contact the bot")
@@ -303,12 +396,24 @@ func (p *Pipeline) Run(ctx context.Context) error {
 func (p *Pipeline) validateDeps() error {
 	// recipients опционален - он может быть nil, если auto_subscribe отключен
 	// В этом случае pipeline будет работать только в режиме force_dispatch
-	// Если skipGemini=true, то categorizer, ranker, summarizer, formatter, sender не обязательны
+	switch {
+	case p.stateStore == nil,
+		p.clock == nil:
+		return ErrNotConfigured
+	}
+
+	// В режиме send нужен только sender
+	if p.sendMode {
+		if p.sender == nil {
+			return ErrNotConfigured
+		}
+		return nil
+	}
+
+	// В режиме build или обычном режиме нужны все зависимости
 	switch {
 	case p.collector == nil,
-		p.filter == nil,
-		p.stateStore == nil,
-		p.clock == nil:
+		p.filter == nil:
 		return ErrNotConfigured
 	}
 
@@ -325,6 +430,31 @@ func (p *Pipeline) validateDeps() error {
 	}
 
 	return nil
+}
+
+func (p *Pipeline) updateStateFromDigest(prev news.State, digest *news.Digest) news.State {
+	now := p.clock()
+	prev.LastRun = now
+
+	existing := make(map[string]struct{}, len(prev.SentArticles))
+	filtered := make([]news.StateArticle, 0, len(prev.SentArticles))
+	for _, item := range prev.SentArticles {
+		existing[item.ID] = struct{}{}
+		filtered = append(filtered, item)
+	}
+
+	for _, articleID := range digest.ArticleIDs {
+		if _, ok := existing[articleID]; ok {
+			continue
+		}
+		filtered = append(filtered, news.StateArticle{
+			ID:     articleID,
+			SentAt: now,
+		})
+	}
+
+	prev.SentArticles = filtered
+	return prev
 }
 
 func (p *Pipeline) updateState(prev news.State, entries []news.DigestEntry) news.State {

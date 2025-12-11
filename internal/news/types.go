@@ -59,3 +59,10 @@ type RecipientBinding struct {
 type TelegramState struct {
 	LastUpdateID int64 `json:"last_update_id"`
 }
+
+// Digest хранит готовый дайджест для отправки.
+type Digest struct {
+	Messages   []string  `json:"messages"`   // Готовые сообщения для отправки
+	CreatedAt  time.Time `json:"created_at"`  // Время создания дайджеста
+	ArticleIDs []string  `json:"article_ids"` // ID статей, включенных в дайджест (для отслеживания отправленных)
+}

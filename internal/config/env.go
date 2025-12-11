@@ -12,6 +12,8 @@ type EnvConfig struct {
 	ForceDispatch    bool
 	SkipGemini       bool // Пропустить этапы Gemini (только логи фильтрации)
 	SendTestMessage  bool // Отправить только тестовое сообщение без обработки новостей
+	BuildMode        bool // Режим формирования дайджеста (сохраняет, не отправляет)
+	SendMode         bool // Режим отправки дайджеста (читает сохраненный, отправляет)
 }
 
 // LoadEnvConfig читает переменные окружения и возвращает конфигурацию.
@@ -32,6 +34,8 @@ func LoadEnvConfig() (*EnvConfig, error) {
 	}
 
 	forceDispatch := os.Getenv("FORCE_DISPATCH") == "1"
+	buildMode := os.Getenv("BUILD_MODE") == "1"
+	sendMode := os.Getenv("SEND_MODE") == "1"
 
 	return &EnvConfig{
 		TelegramBotToken: tgToken,
@@ -39,5 +43,7 @@ func LoadEnvConfig() (*EnvConfig, error) {
 		ForceDispatch:    forceDispatch,
 		SkipGemini:       skipGemini,
 		SendTestMessage:  sendTestMessage,
+		BuildMode:        buildMode,
+		SendMode:         sendMode,
 	}, nil
 }

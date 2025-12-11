@@ -1,0 +1,86 @@
+name: Build News Digest
+
+on:
+  # Запуск через внешний cron (cron-job.org) в 00:30 UTC
+  workflow_dispatch:
+    inputs:
+      force_dispatch:
+        description: 'Force dispatch even if no new news (set to 1 to enable)'
+        required: false
+        default: '0'
+        type: string
+
+jobs:
+  build-digest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Нужно для коммита state.json
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Verify secrets are set
+        run: |
+          if [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then
+            echo "ERROR: GEMINI_API_KEY secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]; then
+            echo "ERROR: TELEGRAM_BOT_TOKEN secret is not set"
+            exit 1
+          fi
+          echo "Secrets are configured (values are hidden)"
+
+      - name: Build digest
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          FORCE_DISPATCH: ${{ github.event.inputs.force_dispatch || '0' }}
+          BUILD_MODE: '1'
+        run: go run ./cmd/dailyjob
+
+      - name: Commit state.json and digest.json
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          mkdir -p state
+          
+          # Коммитим state.json если есть изменения
+          if [ -f "state/state.json" ] && ! git diff --quiet state/state.json; then
+            git add state/state.json
+            git commit -m "chore: update state [skip ci]" || true
+          fi
+          
+          # Коммитим digest.json если он создан
+          if [ -f "state/digest.json" ]; then
+            git add state/digest.json
+            git commit -m "chore: build digest [skip ci]" || true
+          fi
+          
+          # Пушим изменения если есть коммиты
+          if [ -n "$(git status --porcelain)" ]; then
+            git push origin HEAD:${GITHUB_REF#refs/heads/} || true
+          fi
+
+      - name: Report failure
+        if: failure()
+        run: |
+          echo "Build digest failed. Check logs above for details."
+

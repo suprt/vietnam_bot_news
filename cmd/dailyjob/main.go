@@ -91,6 +91,8 @@ func main() {
 		ForceDispatch:   envCfg.ForceDispatch,
 		SkipGemini:      envCfg.SkipGemini,
 		SendTestMessage: envCfg.SendTestMessage,
+		BuildMode:       envCfg.BuildMode,
+		SendMode:        envCfg.SendMode,
 		Config:          rootCfg.Pipeline,
 	})
 
