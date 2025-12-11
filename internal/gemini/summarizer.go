@@ -142,29 +142,42 @@ func (s *Summarizer) summarizeBatch(ctx context.Context, articles []news.Categor
 
 	// Формируем результат - преобразуем CategorizedArticle → DigestEntry
 	// Сначала обрабатываем ответы от Gemini
-	summariesMap := make(map[string]string, len(summaries))
+	summariesMap := make(map[string]summaryData, len(summaries))
 	for _, summaryResp := range summaries {
+		titleRU := strings.TrimSpace(summaryResp.TitleRU)
 		summaryRU := strings.TrimSpace(summaryResp.SummaryRU)
 		if summaryRU != "" {
-			summariesMap[summaryResp.ID] = summaryRU
+			summariesMap[summaryResp.ID] = summaryData{
+				TitleRU:   titleRU,
+				SummaryRU: summaryRU,
+			}
 		}
 	}
 
 	// Формируем результаты для всех статей
 	results := make([]news.DigestEntry, 0, len(articles))
 	for _, catArticle := range articles {
-		summaryRU, ok := summariesMap[catArticle.Article.ID]
-		if !ok || summaryRU == "" {
-			// Fallback: если Gemini не вернул summary, используем заголовок
-			summaryRU = catArticle.Article.Title
+		data, ok := summariesMap[catArticle.Article.ID]
+		if !ok || data.SummaryRU == "" {
+			// Fallback: если Gemini не вернул summary, используем оригинальный заголовок
+			data = summaryData{
+				TitleRU:   catArticle.Article.Title,
+				SummaryRU: catArticle.Article.Title,
+			}
+		}
+		
+		// Если заголовок не переведен, используем оригинальный
+		if data.TitleRU == "" {
+			data.TitleRU = catArticle.Article.Title
 		}
 
 		results = append(results, news.DigestEntry{
 			ID:          catArticle.Article.ID,
 			Category:    catArticle.Category,
 			Title:       catArticle.Article.Title,
+			TitleRU:     data.TitleRU,
 			URL:         catArticle.Article.URL,
-			SummaryRU:   summaryRU,
+			SummaryRU:   data.SummaryRU,
 			Source:      catArticle.Article.Source,
 			PublishedAt: catArticle.Article.PublishedAt,
 		})
@@ -176,10 +189,12 @@ func (s *Summarizer) summarizeBatch(ctx context.Context, articles []news.Categor
 func (s *Summarizer) buildPrompt(inputJSON string) string {
 	return fmt.Sprintf(`Ты — русскоязычный редактор новостной ленты.
 Тебе будет передан список новостей с уникальными идентификаторами id, заголовками и полным текстом на вьетнамском (иногда на английском).
-Для каждой новости сделай краткое резюме на русском языке длиной 1–2 предложения.
+Для каждой новости:
+1. Переведи заголовок на русский язык (title_ru)
+2. Сделай краткое резюме на русском языке длиной 1–2 предложения (summary_ru)
 Используй нейтральный, информативный стиль, без оценочных суждений и кликовбейта. Не придумывай факты, которых нет в тексте.
 Верни результат в виде списка объектов JSON без дополнительных комментариев. Формат:
-[{"id": "<id новости>", "summary_ru": "<краткое резюме на русском>"}, ...]
+[{"id": "<id новости>", "title_ru": "<переведенный заголовок на русском>", "summary_ru": "<краткое резюме на русском>"}, ...]
 
 Входные данные:
 %s`, inputJSON)
@@ -187,6 +202,12 @@ func (s *Summarizer) buildPrompt(inputJSON string) string {
 
 type summaryResponse struct {
 	ID        string `json:"id"`
-	SummaryRU string `json:"summary_ru"`
+	TitleRU   string `json:"title_ru"`   // Переведенный заголовок
+	SummaryRU string `json:"summary_ru"` // Резюме
+}
+
+type summaryData struct {
+	TitleRU   string
+	SummaryRU string
 }
 

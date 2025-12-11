@@ -26,7 +26,8 @@ type CategorizedArticle struct {
 type DigestEntry struct {
 	ID          string    `json:"id"`
 	Category    string    `json:"category"`
-	Title       string    `json:"title"`
+	Title       string    `json:"title"`        // Оригинальный заголовок
+	TitleRU     string    `json:"title_ru"`     // Переведенный заголовок на русский
 	URL         string    `json:"url"`
 	SummaryRU   string    `json:"summary_ru"`
 	Source      string    `json:"source"`

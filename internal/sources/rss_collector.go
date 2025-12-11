@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -140,10 +141,13 @@ func (c *RSSCollector) fetchFeed(ctx context.Context, site config.Site, rssFeed 
 			metadata["rss_category"] = rssFeed.Category
 		}
 
+		// Декодируем HTML-сущности в заголовке (например, &agrave; -> à, &ecirc; -> ê)
+		title := html.UnescapeString(strings.TrimSpace(item.Title))
+
 		articles = append(articles, news.ArticleRaw{
 			ID:          buildArticleID(site.ID, item.Link, timestamp),
 			Source:      site.ID,
-			Title:       strings.TrimSpace(item.Title),
+			Title:       title,
 			URL:         strings.TrimSpace(item.Link),
 			PublishedAt: timestamp,
 			RawLanguage: detectLanguage(site),

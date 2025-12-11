@@ -55,7 +55,8 @@ func (f *Formatter) BuildMessages(entries []news.DigestEntry) ([]string, error) 
 	categoryBlocks := f.formatCategoriesAsBlocks(byCategory)
 
 	// Разбиваем на сообщения по блокам категорий (без разрывов)
-	messages := f.splitIntoMessagesByCategories(categoryBlocks, f.maxMessages)
+	// Количество сообщений = количество категорий (без лимита)
+	messages := f.splitIntoMessagesByCategories(categoryBlocks)
 
 	return messages, nil
 }
@@ -78,8 +79,13 @@ func (f *Formatter) formatCategoriesAsBlocks(byCategory map[string][]news.Digest
 
 		entries := byCategory[category]
 		for j, entry := range entries {
+			// Используем переведенный заголовок, если он есть, иначе оригинальный
+			title := entry.TitleRU
+			if title == "" {
+				title = entry.Title
+			}
 			// Формат: [Заголовок](URL) — summary
-			line := fmt.Sprintf("[%s](%s) — %s", entry.Title, entry.URL, entry.SummaryRU)
+			line := fmt.Sprintf("[%s](%s) — %s", title, entry.URL, entry.SummaryRU)
 			sb.WriteString(line)
 			if j < len(entries)-1 {
 				sb.WriteString("\n")
@@ -94,7 +100,8 @@ func (f *Formatter) formatCategoriesAsBlocks(byCategory map[string][]news.Digest
 
 // splitIntoMessagesByCategories разбивает блоки категорий на сообщения, не разрывая категории.
 // Каждая категория — это отдельный блок, который либо полностью помещается в сообщение, либо разрывается только в крайнем случае.
-func (f *Formatter) splitIntoMessagesByCategories(categoryBlocks []string, maxMessages int) []string {
+// Количество сообщений определяется количеством категорий (без лимита).
+func (f *Formatter) splitIntoMessagesByCategories(categoryBlocks []string) []string {
 	if len(categoryBlocks) == 0 {
 		return nil
 	}
@@ -123,12 +130,6 @@ func (f *Formatter) splitIntoMessagesByCategories(categoryBlocks []string, maxMe
 			messages = append(messages, msg)
 			currentMessage.Reset()
 
-			// Проверяем лимит количества сообщений
-			if len(messages) >= maxMessages {
-				// Достигли максимума сообщений, обрезаем остальное
-				break
-			}
-
 			// Начинаем новое сообщение с текущего блока (без разделителя, т.к. это начало)
 			blockWithSeparator = block
 		}
@@ -147,10 +148,6 @@ func (f *Formatter) splitIntoMessagesByCategories(categoryBlocks []string, maxMe
 						msg := strings.TrimSuffix(currentMessage.String(), "\n")
 						messages = append(messages, msg)
 						currentMessage.Reset()
-
-						if len(messages) >= maxMessages {
-							break
-						}
 					}
 
 					currentMessage.WriteString(lineWithNewline)
@@ -163,10 +160,6 @@ func (f *Formatter) splitIntoMessagesByCategories(categoryBlocks []string, maxMe
 				messages = append(messages, msg)
 				currentMessage.Reset()
 
-				if len(messages) >= maxMessages {
-					break
-				}
-
 				// Теперь разрываем блок построчно
 				lines := strings.Split(block, "\n")
 				for _, line := range lines {
@@ -177,10 +170,6 @@ func (f *Formatter) splitIntoMessagesByCategories(categoryBlocks []string, maxMe
 						msg := strings.TrimSuffix(currentMessage.String(), "\n")
 						messages = append(messages, msg)
 						currentMessage.Reset()
-
-						if len(messages) >= maxMessages {
-							break
-						}
 					}
 
 					currentMessage.WriteString(lineWithNewline)
@@ -194,7 +183,7 @@ func (f *Formatter) splitIntoMessagesByCategories(categoryBlocks []string, maxMe
 	}
 
 	// Добавляем последнее сообщение, если оно не пустое
-	if currentMessage.Len() > 0 && len(messages) < maxMessages {
+	if currentMessage.Len() > 0 {
 		msg := currentMessage.String()
 		messages = append(messages, msg)
 	}
