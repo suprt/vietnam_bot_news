@@ -9,6 +9,16 @@ on:
         required: false
         default: '0'
         type: string
+      skip_gemini:
+        description: 'Skip Gemini processing, only show article selection logs (set to 1 to enable)'
+        required: false
+        default: '0'
+        type: string
+      send_test_message:
+        description: 'Send test message only, skip all news processing (set to 1 to enable)'
+        required: false
+        default: '0'
+        type: string
 
 jobs:
   build-digest:
