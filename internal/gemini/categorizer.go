@@ -274,6 +274,38 @@ func (c *Categorizer) isValidCategory(category string) bool {
 }
 
 func extractJSON(text string) string {
+	// Удаляем markdown code blocks (```json ... ``` или ``` ... ```)
+	// Ищем начало и конец code block
+	codeBlockStart := strings.Index(text, "```json")
+	if codeBlockStart != -1 {
+		// Нашли начало code block, пропускаем ```json и возможные пробелы/переносы строк
+		contentStart := codeBlockStart + 6
+		// Пропускаем пробелы и переносы строк после ```json
+		for contentStart < len(text) && (text[contentStart] == ' ' || text[contentStart] == '\n' || text[contentStart] == '\r') {
+			contentStart++
+		}
+		// Ищем конец code block
+		codeBlockEnd := strings.Index(text[contentStart:], "```")
+		if codeBlockEnd != -1 {
+			// Извлекаем содержимое между ```json и ```
+			text = strings.TrimSpace(text[contentStart : contentStart+codeBlockEnd])
+		}
+	} else {
+		// Пробуем найти обычный code block без указания языка
+		codeBlockStart = strings.Index(text, "```")
+		if codeBlockStart != -1 {
+			contentStart := codeBlockStart + 3
+			// Пропускаем пробелы и переносы строк после ```
+			for contentStart < len(text) && (text[contentStart] == ' ' || text[contentStart] == '\n' || text[contentStart] == '\r') {
+				contentStart++
+			}
+			codeBlockEnd := strings.Index(text[contentStart:], "```")
+			if codeBlockEnd != -1 {
+				text = strings.TrimSpace(text[contentStart : contentStart+codeBlockEnd])
+			}
+		}
+	}
+
 	// Ищем JSON-массив в тексте
 	start := strings.Index(text, "[")
 	if start == -1 {
