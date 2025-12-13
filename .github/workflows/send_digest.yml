@@ -61,7 +61,7 @@ jobs:
           SEND_MODE: '1'
         run: go run ./cmd/dailyjob
 
-      - name: Commit state.json
+      - name: Commit state.json and remove digest.json
         if: success()
         run: |
           git config user.name "github-actions[bot]"
@@ -69,20 +69,16 @@ jobs:
           
           mkdir -p state
           
-          # Коммитим state.json если есть изменения
-          if [ -f "state/state.json" ] && ! git diff --quiet state/state.json; then
-            git add state/state.json
-            git commit -m "chore: update state after send [skip ci]" || true
-          fi
+          # Добавляем все изменения в state/ директории
+          # git add -u добавляет изменения и удаления для отслеживаемых файлов
+          git add -u state/ 2>/dev/null || true
           
-          # Удаляем digest.json если он был отправлен
-          if [ -f "state/digest.json" ]; then
-            git rm state/digest.json || true
-            git commit -m "chore: remove digest after send [skip ci]" || true
-          fi
+          # Также добавляем новые файлы в state/ если есть
+          git add state/*.json 2>/dev/null || true
           
-          # Пушим изменения если есть коммиты
-          if [ -n "$(git status --porcelain)" ]; then
+          # Коммитим все изменения если есть что коммитить
+          if [ -n "$(git status --porcelain state/)" ]; then
+            git commit -m "chore: update state after send, remove digest [skip ci]" || true
             git push origin HEAD:${GITHUB_REF#refs/heads/} || true
           fi
 
