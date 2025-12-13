@@ -171,6 +171,89 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		return nil
 	}
 
+	// Режим send: отправляем сохраненный дайджест (проверяем ДО начала обработки)
+	if p.sendMode {
+		log.Println("SEND_MODE: Loading digest from state/digest.json...")
+		digest, err := p.stateStore.LoadDigest(ctx)
+		if err != nil {
+			return fmt.Errorf("load digest: %w", err)
+		}
+		if digest == nil {
+			log.Println("SEND_MODE: No saved digest found, running full pipeline as fallback...")
+			// Если дайджеста нет, запускаем полный пайплайн в обычном режиме
+			// Это fallback на случай, если build workflow не успел выполниться
+			// Создаем новый пайплайн без sendMode для избежания рекурсии
+			fallbackPipeline := &Pipeline{
+				collector:       p.collector,
+				filter:          p.filter,
+				categorizer:     p.categorizer,
+				ranker:          p.ranker,
+				summarizer:      p.summarizer,
+				formatter:       p.formatter,
+				sender:          p.sender,
+				recipients:      p.recipients,
+				stateStore:      p.stateStore,
+				clock:           p.clock,
+				forceDispatch:   p.forceDispatch,
+				skipGemini:      p.skipGemini,
+				sendTestMessage: p.sendTestMessage,
+				buildMode:       false,
+				sendMode:        false,
+				cfg:             p.cfg,
+			}
+			log.Println("SEND_MODE: Fallback pipeline started (this will build and send digest in one run)")
+			return fallbackPipeline.Run(ctx)
+		}
+
+		log.Printf("SEND_MODE: Digest loaded successfully - created at %s (%d messages, %d articles)",
+			digest.CreatedAt.Format("2006-01-02 15:04:05"), len(digest.Messages), len(digest.ArticleIDs))
+
+		if len(digest.Messages) == 0 {
+			log.Println("SEND_MODE: Digest has no messages, nothing to send")
+			// Удаляем пустой дайджест
+			if err := p.stateStore.DeleteDigest(ctx); err != nil {
+				log.Printf("Warning: failed to delete empty digest file: %v", err)
+			} else {
+				log.Println("SEND_MODE: Empty digest file deleted")
+			}
+			return nil
+		}
+
+		if len(recipients) == 0 && !p.forceDispatch {
+			return fmt.Errorf("no recipients registered; ask users to contact the bot")
+		}
+
+		if len(recipients) == 0 {
+			log.Println("SEND_MODE: No recipients, but FORCE_DISPATCH is enabled - skipping send")
+		} else {
+			log.Printf("SEND_MODE: Sending %d messages to %d recipient(s)...", len(digest.Messages), len(recipients))
+			if err := p.sender.Send(ctx, recipients, digest.Messages); err != nil {
+				log.Printf("SEND_MODE: Failed to send messages: %v", err)
+				return fmt.Errorf("send messages: %w", err)
+			}
+			log.Printf("SEND_MODE: Successfully sent %d messages to %d recipient(s)", len(digest.Messages), len(recipients))
+		}
+
+		// Обновляем state с отправленными статьями
+		log.Println("SEND_MODE: Updating state with sent articles...")
+		newState := p.updateStateFromDigest(state, digest)
+		if err := p.stateStore.Save(ctx, newState); err != nil {
+			log.Printf("SEND_MODE: Failed to save state: %v", err)
+			return fmt.Errorf("save state: %w", err)
+		}
+		log.Println("SEND_MODE: State updated successfully")
+
+		// Удаляем дайджест ТОЛЬКО после успешной отправки и сохранения state
+		log.Println("SEND_MODE: Deleting digest.json after successful send...")
+		if err := p.stateStore.DeleteDigest(ctx); err != nil {
+			log.Printf("SEND_MODE: Warning - failed to delete digest file: %v", err)
+		} else {
+			log.Println("SEND_MODE: Digest file (state/digest.json) deleted successfully after successful send")
+		}
+
+		return nil
+	}
+
 	log.Println("Step 1: Collecting articles from RSS feeds...")
 	rawArticles, err := p.collector.Collect(ctx)
 	if err != nil {
@@ -307,89 +390,6 @@ func (p *Pipeline) Run(ctx context.Context) error {
 			return fmt.Errorf("save digest: %w", err)
 		}
 		log.Printf("Digest saved to state/digest.json (%d messages, %d articles)", len(messages), len(articleIDs))
-		return nil
-	}
-
-	// Режим send: отправляем сохраненный дайджест
-	if p.sendMode {
-		log.Println("SEND_MODE: Loading digest from state/digest.json...")
-		digest, err := p.stateStore.LoadDigest(ctx)
-		if err != nil {
-			return fmt.Errorf("load digest: %w", err)
-		}
-		if digest == nil {
-			log.Println("SEND_MODE: No saved digest found, running full pipeline as fallback...")
-			// Если дайджеста нет, запускаем полный пайплайн в обычном режиме
-			// Это fallback на случай, если build workflow не успел выполниться
-			// Создаем новый пайплайн без sendMode для избежания рекурсии
-			fallbackPipeline := &Pipeline{
-				collector:       p.collector,
-				filter:          p.filter,
-				categorizer:     p.categorizer,
-				ranker:          p.ranker,
-				summarizer:      p.summarizer,
-				formatter:       p.formatter,
-				sender:          p.sender,
-				recipients:      p.recipients,
-				stateStore:      p.stateStore,
-				clock:           p.clock,
-				forceDispatch:   p.forceDispatch,
-				skipGemini:      p.skipGemini,
-				sendTestMessage: p.sendTestMessage,
-				buildMode:       false,
-				sendMode:        false,
-				cfg:             p.cfg,
-			}
-			log.Println("SEND_MODE: Fallback pipeline started (this will build and send digest in one run)")
-			return fallbackPipeline.Run(ctx)
-		}
-
-		log.Printf("SEND_MODE: Digest loaded successfully - created at %s (%d messages, %d articles)",
-			digest.CreatedAt.Format("2006-01-02 15:04:05"), len(digest.Messages), len(digest.ArticleIDs))
-
-		if len(digest.Messages) == 0 {
-			log.Println("SEND_MODE: Digest has no messages, nothing to send")
-			// Удаляем пустой дайджест
-			if err := p.stateStore.DeleteDigest(ctx); err != nil {
-				log.Printf("Warning: failed to delete empty digest file: %v", err)
-			} else {
-				log.Println("SEND_MODE: Empty digest file deleted")
-			}
-			return nil
-		}
-
-		if len(recipients) == 0 && !p.forceDispatch {
-			return fmt.Errorf("no recipients registered; ask users to contact the bot")
-		}
-
-		if len(recipients) == 0 {
-			log.Println("SEND_MODE: No recipients, but FORCE_DISPATCH is enabled - skipping send")
-		} else {
-			log.Printf("SEND_MODE: Sending %d messages to %d recipient(s)...", len(digest.Messages), len(recipients))
-			if err := p.sender.Send(ctx, recipients, digest.Messages); err != nil {
-				log.Printf("SEND_MODE: Failed to send messages: %v", err)
-				return fmt.Errorf("send messages: %w", err)
-			}
-			log.Printf("SEND_MODE: Successfully sent %d messages to %d recipient(s)", len(digest.Messages), len(recipients))
-		}
-
-		// Обновляем state с отправленными статьями
-		log.Println("SEND_MODE: Updating state with sent articles...")
-		newState := p.updateStateFromDigest(state, digest)
-		if err := p.stateStore.Save(ctx, newState); err != nil {
-			log.Printf("SEND_MODE: Failed to save state: %v", err)
-			return fmt.Errorf("save state: %w", err)
-		}
-		log.Println("SEND_MODE: State updated successfully")
-
-		// Удаляем дайджест ТОЛЬКО после успешной отправки и сохранения state
-		log.Println("SEND_MODE: Deleting digest.json after successful send...")
-		if err := p.stateStore.DeleteDigest(ctx); err != nil {
-			log.Printf("SEND_MODE: Warning - failed to delete digest file: %v", err)
-		} else {
-			log.Println("SEND_MODE: Digest file (state/digest.json) deleted successfully after successful send")
-		}
-
 		return nil
 	}
 
