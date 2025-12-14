@@ -70,23 +70,38 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Создаем директорию state, если её нет
           mkdir -p state
           
-          # Коммитим state.json если есть изменения
+          # Проверяем, есть ли изменения для коммита
+          need_commit=false
+          
+          # Проверяем state.json (как в news_daily.yml)
           if [ -f "state/state.json" ] && ! git diff --quiet state/state.json; then
             git add state/state.json
-            git commit -m "chore: update state [skip ci]" || true
+            need_commit=true
           fi
           
-          # Коммитим digest.json если он создан
+          # Проверяем digest.json (новый файл всегда добавляется, существующий если изменен)
           if [ -f "state/digest.json" ]; then
-            git add state/digest.json
-            git commit -m "chore: build digest [skip ci]" || true
+            # Если файл не отслеживается git'ом (новый) или изменен - добавляем
+            if ! git ls-files --error-unmatch state/digest.json >/dev/null 2>&1; then
+              # Новый файл
+              git add state/digest.json
+              need_commit=true
+            elif ! git diff --quiet state/digest.json; then
+              # Существующий файл с изменениями
+              git add state/digest.json
+              need_commit=true
+            fi
           fi
           
-          # Пушим изменения если есть коммиты
-          if [ -n "$(git status --porcelain)" ]; then
-            git push origin HEAD:${GITHUB_REF#refs/heads/} || true
+          # Коммитим все изменения вместе, если есть что коммитить
+          if [ "$need_commit" = true ]; then
+            git commit -m "chore: update state, build digest [skip ci]"
+            git push origin HEAD:${GITHUB_REF#refs/heads/}
+          else
+            echo "No changes in state.json or digest.json, skipping commit"
           fi
 
       - name: Report failure
