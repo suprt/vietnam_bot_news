@@ -65,11 +65,35 @@ func (f *Formatter) BuildMessages(entries []news.DigestEntry) ([]string, error) 
 // formatCategoriesAsBlocks форматирует каждую категорию отдельно и возвращает массив блоков.
 func (f *Formatter) formatCategoriesAsBlocks(byCategory map[string][]news.DigestEntry) []string {
 	// Сортируем категории для предсказуемого порядка
+	// "Самое важное" - первым, остальные - по алфавиту, "Другое / Разное" - последним
 	categories := make([]string, 0, len(byCategory))
 	for cat := range byCategory {
 		categories = append(categories, cat)
 	}
-	sort.Strings(categories)
+	
+	// Кастомная сортировка категорий
+	sort.Slice(categories, func(i, j int) bool {
+		catI, catJ := categories[i], categories[j]
+		
+		// "Самое важное" всегда первое
+		if catI == "Самое важное" {
+			return true
+		}
+		if catJ == "Самое важное" {
+			return false
+		}
+		
+		// "Другое / Разное" всегда последнее
+		if catI == "Другое / Разное" {
+			return false
+		}
+		if catJ == "Другое / Разное" {
+			return true
+		}
+		
+		// Остальные категории сортируем по алфавиту
+		return catI < catJ
+	})
 
 	blocks := make([]string, 0, len(categories))
 	for _, category := range categories {
