@@ -257,7 +257,8 @@ func (c *Categorizer) buildPrompt(inputJSON string) string {
 - "Другое / Разное" — для новостей, которые не вписываются в тематические категории и не настолько важны для "Самое важное", но могут быть интересны или полезны
 - Если ты удаляешь дубликат, верни в ответе только одну запись с id той новости, которую ты решил оставить. Дубликаты не должны попадать в результат.
 
-Верни результат в виде списка объектов JSON без дополнительных комментариев. Формат:
+Верни результат ТОЛЬКО в виде валидного JSON-массива без markdown блоков, без дополнительных комментариев, без обрамления в code blocks.
+Формат (raw JSON):
 [{"id": "<id новости>", "category": "<одна категория из списка>"}, ...]
 
 Входные данные:
@@ -275,35 +276,45 @@ func (c *Categorizer) isValidCategory(category string) bool {
 
 func extractJSON(text string) string {
 	// Удаляем markdown code blocks (```json ... ``` или ``` ... ```)
-	// Ищем начало и конец code block
+	originalText := text
+
+	// Сначала пробуем найти ```json
 	codeBlockStart := strings.Index(text, "```json")
 	if codeBlockStart != -1 {
 		// Нашли начало code block, пропускаем ```json и возможные пробелы/переносы строк
-		contentStart := codeBlockStart + 6
+		contentStart := codeBlockStart + 7 // ```json = 7 символов
 		// Пропускаем пробелы и переносы строк после ```json
-		for contentStart < len(text) && (text[contentStart] == ' ' || text[contentStart] == '\n' || text[contentStart] == '\r') {
+		for contentStart < len(text) && (text[contentStart] == ' ' || text[contentStart] == '\n' || text[contentStart] == '\r' || text[contentStart] == '\t') {
 			contentStart++
 		}
-		// Ищем конец code block
-		codeBlockEnd := strings.Index(text[contentStart:], "```")
+		// Ищем конец code block (третий ```)
+		remaining := text[contentStart:]
+		codeBlockEnd := strings.Index(remaining, "```")
 		if codeBlockEnd != -1 {
 			// Извлекаем содержимое между ```json и ```
-			text = strings.TrimSpace(text[contentStart : contentStart+codeBlockEnd])
+			text = strings.TrimSpace(remaining[:codeBlockEnd])
 		}
 	} else {
 		// Пробуем найти обычный code block без указания языка
 		codeBlockStart = strings.Index(text, "```")
 		if codeBlockStart != -1 {
-			contentStart := codeBlockStart + 3
+			contentStart := codeBlockStart + 3 // ``` = 3 символа
 			// Пропускаем пробелы и переносы строк после ```
-			for contentStart < len(text) && (text[contentStart] == ' ' || text[contentStart] == '\n' || text[contentStart] == '\r') {
+			for contentStart < len(text) && (text[contentStart] == ' ' || text[contentStart] == '\n' || text[contentStart] == '\r' || text[contentStart] == '\t') {
 				contentStart++
 			}
-			codeBlockEnd := strings.Index(text[contentStart:], "```")
+			// Ищем конец code block (второй ```)
+			remaining := text[contentStart:]
+			codeBlockEnd := strings.Index(remaining, "```")
 			if codeBlockEnd != -1 {
-				text = strings.TrimSpace(text[contentStart : contentStart+codeBlockEnd])
+				text = strings.TrimSpace(remaining[:codeBlockEnd])
 			}
 		}
+	}
+
+	// Если после обработки code block текст пустой, возвращаем исходный
+	if text == "" {
+		text = originalText
 	}
 
 	// Ищем JSON-массив в тексте
@@ -319,7 +330,7 @@ func extractJSON(text string) string {
 		} else if text[i] == ']' {
 			depth--
 			if depth == 0 {
-				return text[start : i+1]
+				return strings.TrimSpace(text[start : i+1])
 			}
 		}
 	}
