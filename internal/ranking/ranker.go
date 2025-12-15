@@ -84,9 +84,55 @@ func (r *Ranker) Rank(ctx context.Context, categorized []news.CategorizedArticle
 
 		// Оцениваем актуальность через Gemini (все статьи категории одним запросом)
 		scored, err := r.rankCategory(ctx, category, articles)
+		rankHadError := err != nil
 		if err != nil {
-			// Если ошибка при ранкинге, используем все статьи без сортировки (fallback)
+			log.Printf("Ranking error for category '%s': %v. Using unscored articles without relevance filter.", category, err)
+			// Если ошибка при ранкинге, используем все статьи без сортировки и без фильтра по релевантности (fallback)
 			scored = articles
+		}
+
+		// Логируем распределение по оценкам и отбрасываем статьи с низкой релевантностью (<5),
+		// но только если ранкинг отработал без ошибок и у нас есть валидные оценки.
+		if !rankHadError {
+			lowCount, midCount, highCount := 0, 0, 0
+			for _, art := range scored {
+				score := art.RelevanceScore
+				switch {
+				case score < 5:
+					lowCount++
+				case score < 8:
+					midCount++
+				default:
+					highCount++
+				}
+			}
+			log.Printf("Ranking scores for category '%s': total %d (>=8: %d, 5-7: %d, <5: %d)",
+				category, len(scored), highCount, midCount, lowCount)
+
+			// Отбрасываем статьи с низкой релевантностью (<5)
+			filtered := make([]news.CategorizedArticle, 0, len(scored))
+			for _, art := range scored {
+				if art.RelevanceScore >= 5 {
+					filtered = append(filtered, art)
+				}
+			}
+
+			if len(filtered) == 0 {
+				log.Printf("Ranking: category '%s' has no articles with relevance_score >= 5; category will be skipped in digest.", category)
+			} else if len(filtered) < len(scored) {
+				log.Printf("Ranking: category '%s' filtered by relevance_score>=5: %d -> %d articles",
+					category, len(scored), len(filtered))
+			}
+
+			scored = filtered
+		} else {
+			log.Printf("Ranking: skipping relevance_score filter for category '%s' due to previous error", category)
+		}
+
+		// Если после фильтрации по релевантности ничего не осталось — переходим к следующей категории
+		if len(scored) == 0 {
+			lastRequestTime = time.Now()
+			continue
 		}
 
 		// Сортируем по оценке актуальности (убывание)
@@ -251,7 +297,6 @@ func (r *Ranker) buildPrompt(inputJSON string) string {
 - Технологические стартапы, инновации, IT-сектор
 - Культурные события, фестивали, молодежные тренды
 - Международные партнерства Вьетнама, торговые соглашения
-- Развитие инфраструктуры (метро, дороги, транспорт)
 - Экология, качество воздуха, городское развитие
 - Гастрономия, новые рестораны, тренды в еде
 - Туризм, открытие границ, изменения в туристической сфере
@@ -259,6 +304,7 @@ func (r *Ranker) buildPrompt(inputJSON string) string {
 
 СРЕДНИЙ ПРИОРИТЕТ (5-7):
 - Общие экономические новости, влияющие на бизнес-среду
+- Развитие инфраструктуры (метро, дороги, транспорт)
 - Социальные тренды, молодежная культура
 - Образование, возможности для экспатов
 - Недвижимость, аренда (если есть практическая ценность)

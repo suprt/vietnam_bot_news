@@ -344,7 +344,45 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("rank articles: %w", err)
 	}
-	log.Printf("Ranked: %d articles selected", len(ranked))
+	log.Printf("Ranked: %d articles selected (after relevance filtering)", len(ranked))
+
+	// Если после ранкинга и фильтрации по релевантности не осталось ни одной статьи,
+	// отправляем служебное сообщение, что сегодня нет достаточно релевантных новостей.
+	if len(ranked) == 0 {
+		log.Println("No articles with sufficient relevance (>=5). Sending 'no news today' service message.")
+
+		serviceMessage := "Сегодня не набралось достаточно релевантных новостей для дайджеста. Вернёмся завтра."
+
+		// В режиме build сохраняем дайджест из одного служебного сообщения
+		if p.buildMode {
+			digest := &news.Digest{
+				Messages:   []string{serviceMessage},
+				CreatedAt:  p.clock(),
+				ArticleIDs: nil,
+			}
+			if err := p.stateStore.SaveDigest(ctx, digest); err != nil {
+				return fmt.Errorf("save digest (no-news service message): %w", err)
+			}
+			log.Println("Saved 'no news today' service digest to state/digest.json")
+			return nil
+		}
+
+		// Обычный режим: отправляем служебное сообщение сразу
+		if len(recipients) == 0 && !p.forceDispatch {
+			return fmt.Errorf("no recipients registered; ask users to contact the bot")
+		}
+		if len(recipients) > 0 {
+			if err := p.sender.Send(ctx, recipients, []string{serviceMessage}); err != nil {
+				return fmt.Errorf("send 'no news today' service message: %w", err)
+			}
+			log.Printf("Sent 'no news today' service message to %d recipient(s)", len(recipients))
+		} else {
+			log.Println("No recipients to send 'no news today' service message (FORCE_DISPATCH enabled, but no chats)")
+		}
+
+		// В этом кейсе статьи не отправлялись, состояние по отправленным новостям не меняется
+		return nil
+	}
 
 	// Задержка 1 минута между этапами для сброса TPM лимита
 	log.Println("Waiting 1 minute before summarization (TPM limit reset)...")
