@@ -70,11 +70,11 @@ func (f *Formatter) formatCategoriesAsBlocks(byCategory map[string][]news.Digest
 	for cat := range byCategory {
 		categories = append(categories, cat)
 	}
-	
+
 	// Кастомная сортировка категорий
 	sort.Slice(categories, func(i, j int) bool {
 		catI, catJ := categories[i], categories[j]
-		
+
 		// "Самое важное" всегда первое
 		if catI == "Самое важное" {
 			return true
@@ -82,7 +82,7 @@ func (f *Formatter) formatCategoriesAsBlocks(byCategory map[string][]news.Digest
 		if catJ == "Самое важное" {
 			return false
 		}
-		
+
 		// "Другое / Разное" всегда последнее
 		if catI == "Другое / Разное" {
 			return false
@@ -90,7 +90,7 @@ func (f *Formatter) formatCategoriesAsBlocks(byCategory map[string][]news.Digest
 		if catJ == "Другое / Разное" {
 			return true
 		}
-		
+
 		// Остальные категории сортируем по алфавиту
 		return catI < catJ
 	})
@@ -218,7 +218,7 @@ func (f *Formatter) splitIntoMessagesByCategories(categoryBlocks []string) []str
 	if len(messages) > 1 {
 		total := len(messages)
 		// Форматируем сегодняшнюю дату
-		today := time.Now().Format("2 января 2006")
+		today := formatDateRu(time.Now())
 		result := make([]string, 0, total)
 		for i, msg := range messages {
 			header := fmt.Sprintf(headerTemplate, i+1, total, today)
@@ -243,4 +243,14 @@ func (f *Formatter) splitIntoMessagesByCategories(categoryBlocks []string) []str
 	}
 
 	return messages
+}
+
+// formatDateRu формирует дату вида "15 января 2025" с правильным месяцем на русском.
+func formatDateRu(t time.Time) string {
+	months := [...]string{
+		"января", "февраля", "марта", "апреля", "мая", "июня",
+		"июля", "августа", "сентября", "октября", "ноября", "декабря",
+	}
+	monthName := months[int(t.Month())-1]
+	return fmt.Sprintf("%d %s %d", t.Day(), monthName, t.Year())
 }
