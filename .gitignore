@@ -30,6 +30,10 @@ go.work.sum
 # Docs (internal AI prompts, not for repo)
 docs/
 
+# Scraping utility output and code (one-time use)
+cmd/scrape-rss/
+configs/found_rss_feeds.yaml
+
 # Editor/IDE
  .idea/
  .vscode/
