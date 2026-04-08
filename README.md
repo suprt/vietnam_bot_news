@@ -34,9 +34,6 @@
 
 ### Запуск через GitHub Actions
 
-**📖 Подробная инструкция:** См. [docs/setup_first_run.md](docs/setup_first_run.md)
-
-**Кратко:**
 1. Настройте секреты в GitHub:
    - Перейдите в Settings → Secrets and variables → Actions
    - Добавьте `GEMINI_API_KEY`
@@ -55,27 +52,30 @@
 ```
 vietnam_bot_news/
 ├── cmd/
-│   └── dailyjob/          # Точка входа приложения
+│   ├── dailyjob/          # Точка входа приложения
+│   └── scrape-rss/        # Утилита для обнаружения RSS-лент
 ├── configs/
 │   ├── pipeline.yaml      # Конфигурация пайплайна
-│   └── sites.yaml         # Список новостных источников
-├── docs/                  # Документация (единственный источник истины)
+│   ├── sites.yaml         # Список новостных источников
+│   └── found_rss_feeds.yaml  # Автоматически обнаруженные RSS-ленты
 ├── internal/
-│   ├── app/              # Главный пайплайн
-│   ├── config/           # Загрузка конфигурации
-│   ├── filter/           # Фильтрация новостей
-│   ├── formatter/        # Форматирование сообщений
-│   ├── gemini/           # Интеграция с Gemini API
-│   ├── news/             # Типы данных
-│   ├── ranking/          # Ранжирование новостей
-│   ├── sources/          # Сбор новостей из RSS
-│   ├── state/            # Хранение состояния
-│   └── telegram/         # Интеграция с Telegram Bot API
+│   ├── app/               # Главный пайплайн
+│   ├── config/            # Загрузка конфигурации
+│   ├── filter/            # Фильтрация новостей
+│   ├── formatter/         # Форматирование сообщений
+│   ├── gemini/            # Интеграция с Gemini API
+│   ├── news/              # Типы данных
+│   ├── ranking/           # Ранжирование новостей
+│   ├── sources/           # Сбор новостей из RSS
+│   ├── state/             # Хранение состояния
+│   └── telegram/          # Интеграция с Telegram Bot API
 ├── state/
-│   └── state.json        # Состояние (создаётся автоматически)
+│   └── state.json         # Состояние (создаётся автоматически)
 └── .github/
     └── workflows/
-        └── news_daily.yml # GitHub Actions workflow
+        ├── news_daily.yml     # Основной workflow
+        ├── build_digest.yml   # Сборка дайджеста
+        └── send_digest.yml    # Отправка дайджеста
 ```
 
 ## Конфигурация
@@ -115,18 +115,6 @@ go test ./...
 # Конкретный модуль
 go test ./internal/filter -v
 ```
-
-### Документация
-
-Вся документация находится в папке `docs/`:
-- `docs/setup_first_run.md` — **пошаговая инструкция для первого запуска** ⭐
-- `docs/vision.md` — описание проекта и MVP
-- `docs/architecture.md` — архитектура системы
-- `docs/prompting.md` — промпты для Gemini
-- `docs/ops_github_actions.md` — настройка и эксплуатация
-- `docs/sites.md` — список источников новостей
-
-**Важно:** Документация является единственным источником истины. Код должен соответствовать документации.
 
 ## Лицензия
 

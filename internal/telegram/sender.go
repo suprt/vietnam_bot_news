@@ -65,11 +65,8 @@ func (s *Sender) Send(ctx context.Context, recipients []news.RecipientBinding, m
 			// Отправка с retry-логикой
 			err := s.sendWithRetry(ctx, recipient.ChatID, message)
 			if err != nil {
-				// Логируем ошибку, но продолжаем отправку остальным
 				log.Printf("Failed to send message to %s (chat_id: %s) after %d attempts: %v",
 					recipient.Name, recipient.ChatID, retryAttempts, err)
-				// В MVP не прерываем процесс при ошибке одного получателя
-				// TODO: можно добавить конфигурацию для критичности ошибок
 				continue
 			}
 
