@@ -35,6 +35,6 @@ cmd/scrape-rss/
 configs/found_rss_feeds.yaml
 
 # Editor/IDE
- .idea/
- .vscode/
- .qwen
+.idea/
+.vscode/
+.qwen/
