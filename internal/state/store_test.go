@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,8 +39,8 @@ func TestFileStore_Load_Save(t *testing.T) {
 				{ID: "article-1", SentAt: now},
 				{ID: "article-2", SentAt: now},
 			},
-			Recipients: []news.RecipientBinding{
-				{Name: "user1", ChatID: "123", UpdatedAt: now},
+			Recipients: []news.StoredRecipient{
+				{ChatID: "123", UpdatedAt: now},
 			},
 			Telegram: news.TelegramState{
 				LastUpdateID: 100,
@@ -48,6 +49,13 @@ func TestFileStore_Load_Save(t *testing.T) {
 
 		if err := store.Save(ctx, state); err != nil {
 			t.Fatalf("Save() error = %v", err)
+		}
+		data, err := os.ReadFile(statePath)
+		if err != nil {
+			t.Fatalf("read saved state: %v", err)
+		}
+		if strings.Contains(string(data), `"name"`) {
+			t.Error("Save() should not persist recipient names")
 		}
 
 		loaded, err := store.Load(ctx)
@@ -132,4 +140,3 @@ func TestFileStore_Save_Atomic(t *testing.T) {
 		t.Error("Save() should remove temporary file")
 	}
 }
-

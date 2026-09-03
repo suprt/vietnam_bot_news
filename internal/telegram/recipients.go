@@ -10,19 +10,22 @@ import (
 	"time"
 
 	"github.com/maine/vietnam_bot_news/internal/news"
+	"github.com/maine/vietnam_bot_news/internal/state"
 )
 
 // RecipientManager отвечает за автоматическое добавление пользователей.
 type RecipientManager struct {
 	client        TelegramClient
 	autoSubscribe bool
+	idCipher      *state.IDCipher
 }
 
 // NewRecipientManager создаёт менеджер.
-func NewRecipientManager(client TelegramClient, auto bool) *RecipientManager {
+func NewRecipientManager(client TelegramClient, auto bool, idCipher *state.IDCipher) *RecipientManager {
 	return &RecipientManager{
 		client:        client,
 		autoSubscribe: auto,
+		idCipher:      idCipher,
 	}
 }
 
@@ -31,13 +34,29 @@ func (m *RecipientManager) Resolve(ctx context.Context, state news.State) (news.
 	if m.client == nil {
 		return state, nil, fmt.Errorf("telegram client not configured")
 	}
+	if m.idCipher == nil {
+		return state, nil, fmt.Errorf("state encryption is not configured")
+	}
 
-	recipients := map[string]news.RecipientBinding{}
+	var err error
+	state, _, err = m.idCipher.MigrateRecipients(state)
+	if err != nil {
+		return state, nil, fmt.Errorf("migrate recipients: %w", err)
+	}
+
+	recipients := map[string]news.StoredRecipient{}
 	for _, r := range state.Recipients {
 		if r.ChatID == "" {
 			continue
 		}
-		recipients[r.ChatID] = r
+		chatID, legacy, err := m.idCipher.Decrypt(r.ChatID)
+		if err != nil {
+			return state, nil, fmt.Errorf("decrypt recipient: %w", err)
+		}
+		if legacy {
+			return state, nil, fmt.Errorf("recipient migration did not encrypt chat ID")
+		}
+		recipients[chatID] = r
 	}
 
 	if m.autoSubscribe {
@@ -71,8 +90,6 @@ func (m *RecipientManager) Resolve(ctx context.Context, state news.State) (news.
 
 		// Обрабатываем только последнее сообщение от каждого пользователя
 		for chatID, msg := range lastMessages {
-			name := deriveRecipientName(msg)
-
 			// Обрабатываем команды
 			text := strings.TrimSpace(msg.Text)
 			textLower := strings.ToLower(text)
@@ -81,47 +98,43 @@ func (m *RecipientManager) Resolve(ctx context.Context, state news.State) (news.
 			if textLower == "/stop" || textLower == "/stop@" || strings.HasPrefix(textLower, "/stop ") {
 				// Удаляем пользователя из списка получателей
 				delete(recipients, chatID)
-				log.Printf("User %s (%s) unsubscribed via /stop command", chatID, name)
+				log.Printf("User %s unsubscribed via /stop command", chatID)
 				continue
 			}
 
 			// Команда /start или любое другое сообщение - подписка
 			// Добавляем пользователя в список получателей
-			recipients[chatID] = news.RecipientBinding{
-				Name:      name,
-				ChatID:    chatID,
-				UpdatedAt: time.Now(),
+			recipient, exists := recipients[chatID]
+			if !exists {
+				recipient.ChatID, err = m.idCipher.Encrypt(chatID)
+				if err != nil {
+					return state, nil, fmt.Errorf("encrypt recipient: %w", err)
+				}
 			}
+			recipient.UpdatedAt = time.Now()
+			recipients[chatID] = recipient
 		}
 
 		state.Telegram.LastUpdateID = maxUpdateID
 	}
 
+	stored := make([]news.StoredRecipient, 0, len(recipients))
 	res := make([]news.RecipientBinding, 0, len(recipients))
-	for _, r := range recipients {
-		res = append(res, r)
+	for chatID, r := range recipients {
+		stored = append(stored, r)
+		res = append(res, news.RecipientBinding{
+			ChatID:    chatID,
+			UpdatedAt: r.UpdatedAt,
+		})
 	}
 
+	sort.Slice(stored, func(i, j int) bool {
+		return stored[i].ChatID < stored[j].ChatID
+	})
 	sort.Slice(res, func(i, j int) bool {
-		return strings.Compare(res[i].Name, res[j].Name) < 0
+		return strings.Compare(res[i].ChatID, res[j].ChatID) < 0
 	})
 
-	state.Recipients = res
+	state.Recipients = stored
 	return state, res, nil
-}
-
-func deriveRecipientName(msg *Message) string {
-	if msg.Chat.Username != "" {
-		return msg.Chat.Username
-	}
-	if msg.From != nil && msg.From.Username != "" {
-		return msg.From.Username
-	}
-	if msg.Chat.Title != "" {
-		return msg.Chat.Title
-	}
-	if msg.Chat.FirstName != "" || msg.Chat.LastName != "" {
-		return strings.TrimSpace(msg.Chat.FirstName + " " + msg.Chat.LastName)
-	}
-	return fmt.Sprintf("chat-%d", msg.Chat.ID)
 }

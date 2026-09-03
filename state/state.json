@@ -2108,18 +2108,15 @@
   ],
   "recipients": [
     {
-      "name": "AuroraLite",
-      "chat_id": "436789620",
+      "chat_id": "v1:9ztRDLZ21R5SWwiSScX145ydLKdqFDaSnAsWIExC6P9Hfz64jQ",
       "updated_at": "2025-12-09T12:39:49.193037112Z"
     },
     {
-      "name": "DEMON Swieer",
-      "chat_id": "5551204194",
+      "chat_id": "v1:x5iKgVRZJXgqqw3vzSDWVCTmOnL9tK5uja51mcuVwsMxwU5Lfh0",
       "updated_at": "2026-02-09T01:00:49.739422672Z"
     },
     {
-      "name": "hixizer",
-      "chat_id": "400461225",
+      "chat_id": "v1:rdo3PNgAG31JVcE9wU6vvm91N1K8nHEQ2ZWBut0fkc7LsQRfGw",
       "updated_at": "2025-12-09T12:39:49.193036842Z"
     }
   ],

@@ -3,6 +3,7 @@ module github.com/maine/vietnam_bot_news
 go 1.23
 
 require (
+	github.com/joho/godotenv v1.5.1
 	google.golang.org/genai v0.3.0
 	gopkg.in/yaml.v3 v3.0.1
 )

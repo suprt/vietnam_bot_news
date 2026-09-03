@@ -25,8 +25,10 @@
    ```bash
    export GEMINI_API_KEY="your-api-key"
    export TELEGRAM_BOT_TOKEN="your-bot-token"
+   export STATE_ENCRYPTION_KEY="long-random-private-passphrase"
    export FORCE_DISPATCH="0"  # опционально, для тестирования установите "1"
    ```
+   Локальный файл `.env` загружается автоматически и не отслеживается Git.
 4. Запустите приложение:
    ```bash
    go run ./cmd/dailyjob
@@ -38,6 +40,7 @@
    - Перейдите в Settings → Secrets and variables → Actions
    - Добавьте `GEMINI_API_KEY`
    - Добавьте `TELEGRAM_BOT_TOKEN`
+   - Добавьте `STATE_ENCRYPTION_KEY` — длинную случайную приватную фразу
 
 2. Запустите workflow вручную:
    - Перейдите в Actions → Daily News Digest
@@ -94,6 +97,7 @@ vietnam_bot_news/
 
 - `GEMINI_API_KEY` (обязательно) — ключ для Gemini API
 - `TELEGRAM_BOT_TOKEN` (обязательно) — токен Telegram бота
+- `STATE_ENCRYPTION_KEY` (обязательно) — длинная секретная фраза для шифрования ID получателей
 - `FORCE_DISPATCH` (опционально) — принудительная рассылка (значение: "1")
 
 ## Подписка на дайджест
@@ -103,6 +107,14 @@ vietnam_bot_news/
 3. При следующем запуске пайплайна вы автоматически получите дайджест
 
 ## Разработка
+
+Для первичного перехода со старого открытого state после настройки `STATE_ENCRYPTION_KEY` выполните:
+
+```bash
+go run ./cmd/migrate-state
+```
+
+Команда удаляет имена из persisted state и шифрует существующие `chat_id`.
 
 ### Запуск тестов
 

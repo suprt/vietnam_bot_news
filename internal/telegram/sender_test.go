@@ -46,7 +46,7 @@ func TestSender_Send(t *testing.T) {
 		{
 			name: "empty messages",
 			recipients: []news.RecipientBinding{
-				{ChatID: "123", Name: "user1"},
+				{ChatID: "123"},
 			},
 			messages: []string{},
 			wantErr:  true,
@@ -54,7 +54,7 @@ func TestSender_Send(t *testing.T) {
 		{
 			name: "successful send",
 			recipients: []news.RecipientBinding{
-				{ChatID: "123", Name: "user1"},
+				{ChatID: "123"},
 			},
 			messages: []string{"Message 1"},
 			mockFunc: func(ctx context.Context, chatID string, text string, parseMode string) error {
@@ -65,8 +65,8 @@ func TestSender_Send(t *testing.T) {
 		{
 			name: "multiple recipients and messages",
 			recipients: []news.RecipientBinding{
-				{ChatID: "123", Name: "user1"},
-				{ChatID: "456", Name: "user2"},
+				{ChatID: "123"},
+				{ChatID: "456"},
 			},
 			messages: []string{"Message 1", "Message 2"},
 			mockFunc: func(ctx context.Context, chatID string, text string, parseMode string) error {
@@ -77,7 +77,7 @@ func TestSender_Send(t *testing.T) {
 		{
 			name: "retry on retryable error",
 			recipients: []news.RecipientBinding{
-				{ChatID: "123", Name: "user1"},
+				{ChatID: "123"},
 			},
 			messages: []string{"Message 1"},
 			mockFunc: func(ctx context.Context, chatID string, text string, parseMode string) error {
@@ -89,7 +89,7 @@ func TestSender_Send(t *testing.T) {
 		{
 			name: "non-retryable error",
 			recipients: []news.RecipientBinding{
-				{ChatID: "123", Name: "user1"},
+				{ChatID: "123"},
 			},
 			messages: []string{"Message 1"},
 			mockFunc: func(ctx context.Context, chatID string, text string, parseMode string) error {
@@ -100,7 +100,7 @@ func TestSender_Send(t *testing.T) {
 		{
 			name: "context cancellation",
 			recipients: []news.RecipientBinding{
-				{ChatID: "123", Name: "user1"},
+				{ChatID: "123"},
 			},
 			messages: []string{"Message 1"},
 			mockFunc: func(ctx context.Context, chatID string, text string, parseMode string) error {
@@ -229,8 +229,8 @@ func TestSender_RateLimit(t *testing.T) {
 	ctx := context.Background()
 
 	recipients := []news.RecipientBinding{
-		{ChatID: "123", Name: "user1"},
-		{ChatID: "456", Name: "user2"},
+		{ChatID: "123"},
+		{ChatID: "456"},
 	}
 	messages := []string{"Message 1", "Message 2", "Message 3"}
 

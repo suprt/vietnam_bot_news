@@ -43,6 +43,10 @@ func main() {
 	f := filter.New(rootCfg.Pipeline)
 	stateStore := state.NewFileStore("state/state.json")
 	tgClient := telegram.NewClient(envCfg.TelegramBotToken)
+	idCipher, err := state.NewIDCipher(envCfg.StateEncryptionKey)
+	if err != nil {
+		log.Fatalf("failed to create state encryption cipher: %v", err)
+	}
 
 	// Инициализируем Gemini клиент только если не пропускаем Gemini
 	var geminiClient *gemini.Client
@@ -73,7 +77,7 @@ func main() {
 
 	var recipientResolver app.RecipientResolver
 	if rootCfg.Pipeline.AutoSubscribe {
-		recipientResolver = telegram.NewRecipientManager(tgClient, true)
+		recipientResolver = telegram.NewRecipientManager(tgClient, true, idCipher)
 	}
 
 	// Создаём пайплайн

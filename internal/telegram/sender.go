@@ -65,8 +65,8 @@ func (s *Sender) Send(ctx context.Context, recipients []news.RecipientBinding, m
 			// Отправка с retry-логикой
 			err := s.sendWithRetry(ctx, recipient.ChatID, message)
 			if err != nil {
-				log.Printf("Failed to send message to %s (chat_id: %s) after %d attempts: %v",
-					recipient.Name, recipient.ChatID, retryAttempts, err)
+				log.Printf("Failed to send message to %s after %d attempts: %v",
+					recipient.ChatID, retryAttempts, err)
 				continue
 			}
 

@@ -54,12 +54,17 @@ jobs:
             echo "ERROR: TELEGRAM_BOT_TOKEN secret is not set"
             exit 1
           fi
+          if [ -z "${{ secrets.STATE_ENCRYPTION_KEY }}" ]; then
+            echo "ERROR: STATE_ENCRYPTION_KEY secret is not set"
+            exit 1
+          fi
           echo "Secrets are configured (values are hidden)"
 
       - name: Build digest
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          STATE_ENCRYPTION_KEY: ${{ secrets.STATE_ENCRYPTION_KEY }}
           FORCE_DISPATCH: ${{ github.event.inputs.force_dispatch || '0' }}
           BUILD_MODE: '1'
         run: go run ./cmd/dailyjob

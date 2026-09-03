@@ -26,8 +26,8 @@ type CategorizedArticle struct {
 type DigestEntry struct {
 	ID          string    `json:"id"`
 	Category    string    `json:"category"`
-	Title       string    `json:"title"`        // Оригинальный заголовок
-	TitleRU     string    `json:"title_ru"`     // Переведенный заголовок на русский
+	Title       string    `json:"title"`    // Оригинальный заголовок
+	TitleRU     string    `json:"title_ru"` // Переведенный заголовок на русский
 	URL         string    `json:"url"`
 	SummaryRU   string    `json:"summary_ru"`
 	Source      string    `json:"source"`
@@ -36,10 +36,10 @@ type DigestEntry struct {
 
 // State хранит минимальную информацию об уже отправленных новостях.
 type State struct {
-	LastRun      time.Time          `json:"last_run"`
-	SentArticles []StateArticle     `json:"sent_articles"`
-	Recipients   []RecipientBinding `json:"recipients"`
-	Telegram     TelegramState      `json:"telegram"`
+	LastRun      time.Time         `json:"last_run"`
+	SentArticles []StateArticle    `json:"sent_articles"`
+	Recipients   []StoredRecipient `json:"recipients"`
+	Telegram     TelegramState     `json:"telegram"`
 }
 
 // StateArticle описывает запись об отправленной новости.
@@ -48,9 +48,14 @@ type StateArticle struct {
 	SentAt time.Time `json:"sent_at"`
 }
 
-// RecipientBinding хранит известные чаты для рассылки.
+// RecipientBinding содержит расшифрованный чат для отправки в Telegram.
 type RecipientBinding struct {
-	Name      string    `json:"name"`
+	ChatID    string
+	UpdatedAt time.Time
+}
+
+// StoredRecipient хранит получателя в state. ChatID здесь зашифрован.
+type StoredRecipient struct {
 	ChatID    string    `json:"chat_id"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -62,7 +67,7 @@ type TelegramState struct {
 
 // Digest хранит готовый дайджест для отправки.
 type Digest struct {
-	Messages   []string  `json:"messages"`   // Готовые сообщения для отправки
+	Messages   []string  `json:"messages"`    // Готовые сообщения для отправки
 	CreatedAt  time.Time `json:"created_at"`  // Время создания дайджеста
 	ArticleIDs []string  `json:"article_ids"` // ID статей, включенных в дайджест (для отслеживания отправленных)
 }

@@ -2,10 +2,13 @@ package telegram
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/maine/vietnam_bot_news/internal/news"
+	"github.com/maine/vietnam_bot_news/internal/state"
 )
 
 // mockTelegramClientForRecipients - мок для тестирования RecipientManager
@@ -47,9 +50,9 @@ func TestRecipientManager_Resolve(t *testing.T) {
 		{
 			name: "existing recipients without auto-subscribe",
 			state: news.State{
-				Recipients: []news.RecipientBinding{
-					{ChatID: "123", Name: "user1"},
-					{ChatID: "456", Name: "user2"},
+				Recipients: []news.StoredRecipient{
+					{ChatID: "123"},
+					{ChatID: "456"},
 				},
 			},
 			autoSubscribe: false,
@@ -195,7 +198,7 @@ func TestRecipientManager_Resolve(t *testing.T) {
 				mockClient := &mockTelegramClientForRecipients{
 					getUpdatesFunc: tt.mockFunc,
 				}
-				manager = NewRecipientManager(mockClient, tt.autoSubscribe)
+				manager = NewRecipientManager(mockClient, tt.autoSubscribe, newTestIDCipher(t))
 			}
 
 			ctx := context.Background()
@@ -222,70 +225,30 @@ func TestRecipientManager_Resolve(t *testing.T) {
 	}
 }
 
-func TestRecipientManager_deriveRecipientName(t *testing.T) {
-	tests := []struct {
-		name string
-		msg  *Message
-		want string
-	}{
-		{
-			name: "prefer chat username",
-			msg: &Message{
-				Chat: Chat{
-					Username: "chatuser",
-				},
-				From: &User{
-					Username: "fromuser",
-				},
-			},
-			want: "chatuser",
-		},
-		{
-			name: "use from username if no chat username",
-			msg: &Message{
-				Chat: Chat{},
-				From: &User{
-					Username: "fromuser",
-				},
-			},
-			want: "fromuser",
-		},
-		{
-			name: "use chat title",
-			msg: &Message{
-				Chat: Chat{
-					Title: "Group Chat",
-				},
-			},
-			want: "Group Chat",
-		},
-		{
-			name: "use first and last name",
-			msg: &Message{
-				Chat: Chat{
-					FirstName: "John",
-					LastName:  "Doe",
-				},
-			},
-			want: "John Doe",
-		},
-		{
-			name: "fallback to chat ID",
-			msg: &Message{
-				Chat: Chat{
-					ID: 12345,
-				},
-			},
-			want: "chat-12345",
-		},
+func TestRecipientManager_MigratesLegacyRecipient(t *testing.T) {
+	manager := NewRecipientManager(&mockTelegramClientForRecipients{}, false, newTestIDCipher(t))
+	state := news.State{
+		Recipients: []news.StoredRecipient{{ChatID: "12345"}},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := deriveRecipientName(tt.msg)
-			if got != tt.want {
-				t.Errorf("deriveRecipientName() = %v, want %v", got, tt.want)
-			}
-		})
+	migrated, recipients, err := manager.Resolve(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
 	}
+	if len(migrated.Recipients) != 1 || !strings.HasPrefix(migrated.Recipients[0].ChatID, "v1:") {
+		t.Fatalf("Resolve() should migrate legacy recipient, got %#v", migrated.Recipients)
+	}
+	if len(recipients) != 1 || recipients[0].ChatID != "12345" {
+		t.Fatalf("Resolve() should return plaintext runtime recipient, got %#v", recipients)
+	}
+}
+
+func newTestIDCipher(t *testing.T) *state.IDCipher {
+	t.Helper()
+	key := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	cipher, err := state.NewIDCipher(key)
+	if err != nil {
+		t.Fatalf("NewIDCipher() error = %v", err)
+	}
+	return cipher
 }
